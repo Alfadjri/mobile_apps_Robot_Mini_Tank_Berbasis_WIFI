@@ -2,10 +2,8 @@ package com.alfadjri28.e_witank
 
 import android.Manifest
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -13,14 +11,16 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -45,6 +45,7 @@ class MainActivity : ComponentActivity() {
                     // --- ROUTE NAVIGATION ---
                     NavHost(navController = navController, startDestination = "splash_guide") {
                         composable("splash_guide") {
+                            // Ini sekarang akan memanggil SplashScreen dari file SplashScreen.kt Anda
                             SplashScreen(
                                 onGuideFinished = {
                                     navController.navigate("home") {
@@ -58,9 +59,9 @@ class MainActivity : ComponentActivity() {
                             HomeScreen(navController = navController)
                         }
 
-                        // 👉 ROUTE BARU UNTUK DEVICE LIST
+                        // Rute untuk layar pencarian dan koneksi perangkat
                         composable("device_list") {
-                            DeviceListScreen()
+                            DeviceListScreen(navController = navController) // Baris ini sudah benar
                         }
                     }
                 }
@@ -69,11 +70,11 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(navController: NavController) {
     val context = LocalContext.current
 
-    // Hanya izin lokasi yang benar-benar runtime di Android 10
     val requiredPermissions = arrayOf(
         Manifest.permission.ACCESS_FINE_LOCATION,
         Manifest.permission.ACCESS_COARSE_LOCATION
@@ -91,41 +92,50 @@ fun HomeScreen(navController: NavController) {
         hasAllPermissions = permissions.values.all { it }
     }
 
-    // Cek izin pertama kali saat tampilan dimuat
+    // Cek izin saat tampilan pertama kali dimuat
     LaunchedEffect(Unit) {
-        val granted = requiredPermissions.all {
-            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
-        }
-        if (!granted) {
+        if (!hasAllPermissions) {
             permissionLauncher.launch(requiredPermissions)
-        } else {
-            hasAllPermissions = true
         }
     }
 
     // --- UI utama ---
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .safeDrawingPadding()
-    ) {
-        if (!hasAllPermissions) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text("Aplikasi memerlukan izin lokasi untuk mendeteksi hotspot Anda.")
-                Spacer(modifier = Modifier.height(16.dp))
-                Button(onClick = { permissionLauncher.launch(requiredPermissions) }) {
-                    Text("Berikan Izin")
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("E-WiTank Controller") },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            )
+        }
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            if (!hasAllPermissions) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        "Aplikasi memerlukan izin lokasi untuk mendeteksi hotspot dan perangkat.",
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(onClick = { permissionLauncher.launch(requiredPermissions) }) {
+                        Text("Berikan Izin")
+                    }
                 }
+            } else {
+                // Lanjutkan ke UI utama jika izin sudah diberikan
+                HotspotConnectionUI(navController)
             }
-        } else {
-            // 👇 lanjutkan ke logika hotspot kamu di sini
-            HotspotConnectionUI(navController)
         }
     }
 }
@@ -133,13 +143,14 @@ fun HomeScreen(navController: NavController) {
 @Composable
 fun HotspotConnectionUI(navController: NavController) {
     val context = LocalContext.current
-    var hotspotDevices by remember { mutableStateOf<List<String>>(emptyList()) }
     var isHotspotActive by remember { mutableStateOf(false) }
-    var espConnected by remember { mutableStateOf(false) }
 
-    val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+    // Dapatkan WifiManager dari context
+    val wifiManager = remember(context) {
+        context.applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+    }
 
-    // Fungsi untuk cek apakah hotspot aktif
+    // Fungsi untuk memeriksa status hotspot
     fun checkHotspotStatus(): Boolean {
         return try {
             val method = wifiManager.javaClass.getDeclaredMethod("isWifiApEnabled")
@@ -151,49 +162,15 @@ fun HotspotConnectionUI(navController: NavController) {
         }
     }
 
-    // Fungsi untuk membaca device yang terhubung
-    fun getConnectedDevices(): List<String> {
-        val result = mutableListOf<String>()
-        try {
-            val arpFile = java.io.File("/proc/net/arp")
-            if (arpFile.exists()) {
-                arpFile.forEachLine { line ->
-                    if (line.contains("esp", ignoreCase = true)) {
-                        val parts = line.split(Regex("\\s+"))
-                        if (parts.size >= 4) {
-                            val ip = parts[0]
-                            val mac = parts[3]
-                            result.add("$ip ($mac)")
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        return result
-    }
-
-    // Jalankan setiap beberapa detik untuk update status
+    // LaunchedEffect untuk memeriksa status hotspot secara berkala
     LaunchedEffect(Unit) {
         while (true) {
             isHotspotActive = checkHotspotStatus()
-            if (isHotspotActive) {
-                val devices = getConnectedDevices()
-                hotspotDevices = devices
-                espConnected = devices.any {
-                    it.contains("esp-dc3f50", ignoreCase = true) ||
-                            it.contains("esp32-693104", ignoreCase = true)
-                }
-            } else {
-                hotspotDevices = emptyList()
-                espConnected = false
-            }
-            kotlinx.coroutines.delay(3000) // cek tiap 3 detik
+            kotlinx.coroutines.delay(3000) // Cek setiap 3 detik
         }
     }
 
-    // UI tampilan
+    // Tampilan UI utama
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -201,64 +178,62 @@ fun HotspotConnectionUI(navController: NavController) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text(
-            text = if (isHotspotActive) "Hotspot Aktif" else "Hotspot Tidak Aktif",
-            style = MaterialTheme.typography.headlineSmall,
-            color = if (isHotspotActive) Color(0xFF2E7D32) else Color.Red
-        )
+        // Tampilkan ikon dan status hotspot
+        if (isHotspotActive) {
+            Icon(
+                imageVector = Icons.Default.Wifi,
+                contentDescription = "Hotspot Aktif",
+                tint = Color(0xFF2E7D32), // Warna hijau
+                modifier = Modifier.size(80.dp)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Hotspot Aktif",
+                style = MaterialTheme.typography.headlineSmall,
+                color = Color(0xFF2E7D32)
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Default.WifiOff,
+                contentDescription = "Hotspot Tidak Aktif",
+                tint = Color.Red,
+                modifier = Modifier.size(80.dp)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Hotspot Tidak Aktif",
+                style = MaterialTheme.typography.headlineSmall,
+                color = Color.Red
+            )
+        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
         if (isHotspotActive) {
-            Text("Perangkat Terhubung:", fontWeight = FontWeight.Bold)
-            if (hotspotDevices.isEmpty()) {
-                Text("Belum ada perangkat yang terhubung", color = Color.Gray)
-            } else {
-                hotspotDevices.forEach { device ->
-                    Text("- $device", style = MaterialTheme.typography.bodyMedium)
-                }
-            }
-
+            Text(
+                "Hotspot Anda siap untuk dihubungkan oleh alat.",
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
             Spacer(modifier = Modifier.height(24.dp))
-
-            if (espConnected) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(8.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF2196F3))
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            "Device ESP Terdeteksi",
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Button(
-                            onClick = {
-                                // TODO: navigasi ke halaman kontrol atau koneksi
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.White)
-                        ) {
-                            Text("Hubungkan Device 1", color = Color.Black)
-                        }
-                    }
-                }
+            // Tombol untuk menavigasi ke layar pencarian perangkat
+            Button(
+                onClick = {
+                    // Navigasi ke layar DeviceListScreen
+                    navController.navigate("device_list")
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp)
+            ) {
+                Text("Cari & Hubungkan Perangkat")
             }
         } else {
             Text(
-                "Aktifkan hotspot untuk memulai koneksi dengan alat Anda.",
+                "Silakan aktifkan hotspot pada ponsel Anda untuk memulai koneksi dengan alat.",
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(16.dp)
+                modifier = Modifier.padding(horizontal = 16.dp)
             )
         }
     }
 }
-

@@ -2,6 +2,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    // ⭐ 1. TAMBAHKAN BARIS INI UNTUK MENGAKTIFKAN PLUGIN ⭐
+    kotlin("plugin.serialization") version "1.9.24"
 }
 
 android {
@@ -61,4 +63,11 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+
+
+    // Ktor Dependencies (Sudah Benar)
+    implementation("io.ktor:ktor-client-core:2.3.11")
+    implementation("io.ktor:ktor-client-android:2.3.11")
+    implementation("io.ktor:ktor-client-content-negotiation:2.3.11")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.11")
 }
