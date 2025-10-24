@@ -5,24 +5,26 @@ import android.content.pm.PackageManager
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.DirectionsCar // <-- Ikon mobil
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview // <-- Import untuk @Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
+import com.alfadjri28.e_witank.ui.theme.EWiTankTheme // Pastikan import theme Anda benar
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.android.*
@@ -33,61 +35,110 @@ import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.*
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json // <-- Import tambahan
+import kotlinx.serialization.json.Json
 import java.net.Inet4Address
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
 
-// Data class untuk menampung hasil dari ESP
+// Data class untuk menampung hasil dari ESP (disesuaikan dengan JSON dari ESP)
 @Serializable
 data class EspResponse(
     val status: String,
-    val message: String? = null,
-    val mode: String? = null
+    val model: String? = null,
+    val controller_id: String? = null,
+    val cam_id: String? = null
 )
 
-// Data class untuk perangkat yang ditemukan
+// Data class untuk perangkat yang ditemukan (disesuaikan untuk menyimpan ID)
 data class ConnectedDevice(
     val ip: String,
-    val message: String,
-    val mode: String
+    val model: String,
+    val controllerId: String,
+    val camId: String
 )
 
+// =====================================================================
+// ⭐ UI CARD YANG SUDAH DIPISAHKAN ⭐
+// Di sinilah Anda bisa mengubah tampilan kartu sesuai keinginan.
+// =====================================================================
+@Composable
+fun DeviceListItemCard(
+    device: ConnectedDevice,
+    isSelected: Boolean,
+    onClick: (ConnectedDevice) -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .width(150.dp)
+            .height(150.dp)
+            .clickable { onClick(device) },
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        shape = MaterialTheme.shapes.large,
+        colors = if (isSelected) {
+            CardDefaults.cardColors(containerColor = Color(0xFFB9F6CA))
+        } else {
+            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        }
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "RC",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Icon(
+                imageVector = Icons.Default.DirectionsCar,
+                contentDescription = "Ikon Mobil",
+                modifier = Modifier.size(56.dp),
+                tint = Color(0xFF0D47A1)
+            )
+        }
+    }
+}
+
+
+// =====================================================================
+// ⭐ FUNGSI UTAMA SCREEN (LOGIKA) ⭐
+// =====================================================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DeviceListScreen(navController: NavController) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    // --- State ---
     val requiredPermissions = arrayOf(
         Manifest.permission.ACCESS_FINE_LOCATION,
         Manifest.permission.ACCESS_WIFI_STATE,
+        Manifest.permission.ACCESS_NETWORK_STATE, // ✅ tambahan
         Manifest.permission.INTERNET
     )
+
     var hasAllPermissions by remember {
-        mutableStateOf(requiredPermissions.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED })
+        mutableStateOf(requiredPermissions.all {
+            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+        })
     }
+
     var foundDevices by remember { mutableStateOf(listOf<ConnectedDevice>()) }
     var isScanning by remember { mutableStateOf(false) }
     var scanProgress by remember { mutableFloatStateOf(0f) }
     var scanStatusText by remember { mutableStateOf("Tekan tombol untuk memulai") }
-    var connectionStatus by remember { mutableStateOf("Belum terhubung") }
+    var selectedDevice by remember { mutableStateOf<ConnectedDevice?>(null) }
 
-    // --- ⭐ Ktor HTTP Client dengan Konfigurasi JSON yang Diperbaiki ⭐ ---
     val client = remember {
         HttpClient(Android) {
             install(HttpTimeout)
-            // Konfigurasi Ktor untuk mengerti JSON
             install(ContentNegotiation) {
-                json(Json {
-                    // Beri tahu parser untuk mengabaikan error jika ada koma di akhir
-                    isLenient = true
-                    ignoreUnknownKeys = true // Tambahan agar lebih fleksibel
-                })
+                json(Json { isLenient = true; ignoreUnknownKeys = true })
             }
         }
     }
+
     val espPassword = "kentanakaRCCamConnection"
 
     val requestPermissionsLauncher = rememberLauncherForActivityResult(
@@ -96,118 +147,88 @@ fun DeviceListScreen(navController: NavController) {
         hasAllPermissions = permissions.values.all { it }
     }
 
+    // =======================================================
     fun startNetworkScan() {
         if (isScanning) return
 
         coroutineScope.launch {
             isScanning = true
             foundDevices = emptyList()
+            selectedDevice = null
             scanStatusText = "Mencari alamat IP Hotspot..."
 
-            withContext(Dispatchers.IO) {
-                var ipAddress: String? = null
+            val ipAddress = withContext(Dispatchers.IO) {
                 try {
-                    val networkInterfaces = NetworkInterface.getNetworkInterfaces()
-                    while (networkInterfaces.hasMoreElements()) {
-                        val intf = networkInterfaces.nextElement()
-                        if (intf.isUp && (intf.name.contains("ap") || intf.name.contains("wlan"))) {
-                            val addrs = intf.inetAddresses
-                            while (addrs.hasMoreElements()) {
-                                val addr = addrs.nextElement()
-                                if (!addr.isLoopbackAddress && addr is Inet4Address) {
-                                    ipAddress = addr.hostAddress
-                                    break
-                                }
-                            }
-                        }
-                        if (ipAddress != null) break
-                    }
+                    NetworkInterface.getNetworkInterfaces().toList()
+                        .filter { it.isUp && (it.name.contains("ap") || it.name.contains("wlan")) }
+                        .flatMap { it.inetAddresses.toList() }
+                        .firstOrNull { !it.isLoopbackAddress && it is Inet4Address }
+                        ?.hostAddress
                 } catch (e: Exception) {
                     Log.e("NETWORK_SCAN", "Error getting hotspot IP", e)
+                    null
                 }
+            }
 
-                if (ipAddress == null) {
-                    withContext(Dispatchers.Main) {
-                        scanStatusText = "Gagal: Tidak dapat mendeteksi IP Hotspot. Pastikan hotspot aktif."
-                        isScanning = false
-                    }
-                    return@withContext
-                }
+            if (ipAddress == null) {
+                scanStatusText = "Gagal: Tidak dapat mendeteksi IP Hotspot."
+                isScanning = false
+                return@launch
+            }
 
-                val subnet = ipAddress.substringBeforeLast('.')
-                Log.d("NETWORK_SCAN", "Hotspot IP Found: $ipAddress, Subnet to scan: $subnet")
+            val subnet = ipAddress.substringBeforeLast('.')
+            scanStatusText = "Memindai subnet: $subnet.x"
+            val timeout = 200
 
-
-                withContext(Dispatchers.Main) {
-                    scanStatusText = "Memindai subnet: $subnet.x"
-                }
-
-                val timeout = 200
-                val jobs = mutableListOf<Job>()
-
+            withContext(Dispatchers.IO) {
                 for (i in 1..254) {
-                    withContext(Dispatchers.Main) {
-                        scanProgress = i / 254f
-                    }
-
                     val host = "$subnet.$i"
                     if (host == ipAddress) continue
 
-                    val job = launch {
-                        try {
-                            val socket = java.net.Socket()
-                            socket.connect(InetSocketAddress(host, 80), timeout)
-                            socket.close()
+                    try {
+                        val socket = java.net.Socket()
+                        socket.connect(InetSocketAddress(host, 80), timeout)
+                        socket.close()
 
-                            Log.d("NETWORK_SCAN", "Device responded at $host, verifying...")
+                        val response: EspResponse = client.submitForm(
+                            url = "http://$host/",
+                            formParameters = parameters { append("password", espPassword) }
+                        ) {
+                            timeout { requestTimeoutMillis = 2000 }
+                        }.body()
 
-                            val response: EspResponse = client.submitForm(
-                                url = "http://$host/",
-                                formParameters = parameters {
-                                    append("password", espPassword)
-                                }
-                            ) {
-                                timeout { requestTimeoutMillis = 3000 }
-                            }.body()
-
-                            Log.i("NETWORK_SCAN", "Response from $host | Parsed Status: ${response.status}")
-
-                            if (response.status == "ok") {
-                                Log.d("NETWORK_SCAN", "ESP Device VERIFIED at: $host")
-                                withContext(Dispatchers.Main) {
-                                    if (foundDevices.none { it.ip == host }) {
-                                        foundDevices = foundDevices + ConnectedDevice(
-                                            ip = host,
-                                            message = response.message ?: "N/A",
-                                            mode = response.mode ?: "N/A"
-                                        )
-                                    }
-                                }
-                            }
-                        } catch (e: Exception) {
-                            if (e !is java.net.SocketTimeoutException && e !is java.net.ConnectException) {
-                                Log.e("NETWORK_SCAN", "Error processing host $host", e)
+                        if (response.status == "ok" && response.model == "RC") {
+                            Log.d("SCAN", "✅ Ditemukan: $host")
+                            withContext(Dispatchers.Main) {
+                                foundDevices = foundDevices + ConnectedDevice(
+                                    ip = host,
+                                    model = response.model,
+                                    controllerId = response.controller_id ?: "N/A",
+                                    camId = response.cam_id ?: "N/A"
+                                )
                             }
                         }
+                    } catch (_: Exception) {
+                        // Abaikan host yang tidak merespons
                     }
-                    jobs.add(job)
+
+                    if (i % 10 == 0) { // update setiap 10 IP agar tidak lag
+                        withContext(Dispatchers.Main) {
+                            scanProgress = i / 254f
+                        }
+                    }
                 }
-                jobs.joinAll()
             }
 
-            scanStatusText = if (foundDevices.isEmpty()) {
+            scanStatusText = if (foundDevices.isEmpty())
                 "Pemindaian selesai. Tidak ada alat yang ditemukan."
-            } else {
-                "Pemindaian selesai. ${foundDevices.size} alat ditemukan."
-            }
+            else "Pemindaian selesai. ${foundDevices.size} alat ditemukan."
+
             isScanning = false
         }
     }
 
-    fun connectToDevice(device: ConnectedDevice) {
-        connectionStatus = "✅ Berhasil terhubung ke Alat di ${device.ip}!"
-    }
-
+    // =======================================================
     Scaffold(
         topBar = {
             TopAppBar(
@@ -216,8 +237,7 @@ fun DeviceListScreen(navController: NavController) {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali")
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                }
             )
         }
     ) { padding ->
@@ -233,10 +253,7 @@ fun DeviceListScreen(navController: NavController) {
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text(
-                        "Aplikasi membutuhkan izin untuk memindai jaringan.",
-                        textAlign = TextAlign.Center
-                    )
+                    Text("Aplikasi membutuhkan izin untuk memindai jaringan.", textAlign = TextAlign.Center)
                     Spacer(modifier = Modifier.height(12.dp))
                     Button(onClick = { requestPermissionsLauncher.launch(requiredPermissions) }) {
                         Text("Berikan Izin")
@@ -254,15 +271,8 @@ fun DeviceListScreen(navController: NavController) {
 
                     if (isScanning) {
                         Spacer(modifier = Modifier.height(16.dp))
-                        LinearProgressIndicator(
-                            progress = { scanProgress },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Text(
-                            text = scanStatusText,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
+                        LinearProgressIndicator(progress = scanProgress, modifier = Modifier.fillMaxWidth())
+                        Text(scanStatusText, style = MaterialTheme.typography.bodySmall)
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))
@@ -272,48 +282,70 @@ fun DeviceListScreen(navController: NavController) {
                     if (foundDevices.isEmpty()) {
                         Text(if (isScanning) "Menunggu hasil..." else "Belum ada perangkat ditemukan.")
                     } else {
-                        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            items(foundDevices) { device ->
-                                Card(
+                        // ✅ Grid manual 3 kolom tanpa LazyVerticalGrid (aman & ringan)
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            horizontalAlignment = Alignment.Start
+                        ) {
+                            foundDevices.chunked(3).forEach { rowDevices ->
+                                Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(containerColor = Color(0xFFE3F2FD))
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    Column(
-                                        modifier = Modifier
-                                            .padding(16.dp)
-                                            .fillMaxWidth()
-                                    ) {
-                                        Text(
-                                            "Alat Terdeteksi (Controller)",
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF0D47A1)
+                                    rowDevices.forEach { device ->
+                                        DeviceListItemCard(
+                                            device = device,
+                                            isSelected = selectedDevice?.ip == device.ip,
+                                            onClick = { selectedDevice = it }
                                         )
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Text("IP: ${device.ip}")
-                                        Text("Message: ${device.message}")
-                                        Text("Mode: ${device.mode}")
-                                        Spacer(modifier = Modifier.height(12.dp))
-                                        Button(
-                                            onClick = { connectToDevice(device) },
-                                            modifier = Modifier.align(Alignment.End)
-                                        ) {
-                                            Text("Gunakan Perangkat Ini")
-                                        }
                                     }
                                 }
                             }
                         }
+
                     }
 
                     Spacer(Modifier.weight(1f))
                     Text(
-                        text = "Status: $connectionStatus",
+                        text = if (selectedDevice != null)
+                            "✅ Terpilih: ${selectedDevice!!.ip}"
+                        else "Belum ada perangkat dipilih",
                         style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier.align(Alignment.Start)
                     )
                 }
             }
+        }
+    }
+}
+
+
+// =====================================================================
+// ⭐ PREVIEW UNTUK MELIHAT TAMPILAN CARD SECARA TERPISAH ⭐
+// Buka panel "Split" atau "Design" di Android Studio untuk melihatnya.
+// =====================================================================
+@Preview(showBackground = true)
+@Composable
+fun DeviceListPreview() {
+    EWiTankTheme {
+        Row (
+            modifier = Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp) // Untuk Row, gunakan horizontalArrangement
+        ){
+            // Contoh tampilan Card dalam kondisi normal
+            DeviceListItemCard(
+                device = ConnectedDevice("192.168.1.10", "RC", "123456", "789012"),
+                isSelected = false,
+                onClick = {}
+            )
+
+            // Contoh tampilan Card dalam kondisi terpilih (selected)
+            DeviceListItemCard(
+                device = ConnectedDevice("192.168.1.11", "RC", "654321", "210987"),
+                isSelected = true,
+                onClick = {}
+            )
+
         }
     }
 }
