@@ -1,4 +1,4 @@
-package com.alfadjri28.e_witank
+package com.alfadjri28.e_witank.screen
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*

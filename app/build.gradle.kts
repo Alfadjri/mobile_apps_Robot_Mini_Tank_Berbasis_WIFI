@@ -47,6 +47,7 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.process)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
@@ -56,6 +57,7 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.core.splashscreen)
     implementation("androidx.compose.material:material-icons-extended")
+    implementation(libs.androidx.material3)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -70,4 +72,6 @@ dependencies {
     implementation("io.ktor:ktor-client-android:2.3.11")
     implementation("io.ktor:ktor-client-content-negotiation:2.3.11")
     implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.11")
+    implementation("com.google.code.gson:gson:2.10.1")
+
 }
