@@ -133,10 +133,7 @@ private fun HotspotConnectionUI(navController: NavController) {
         while (true) {
             val currentStatus = checkHotspotStatus()
 
-            if (currentStatus != isHotspotActive) {
-                Log.d("Hotspot", "⚙️ Status berubah: ${if (currentStatus) "AKTIF" else "MATI"}")
-            }
-
+            // Hapus data hanya jika hotspot mati
             if (!currentStatus && isHotspotActive) {
                 storage.clearAll()
                 deviceList = emptyList()
@@ -150,14 +147,14 @@ private fun HotspotConnectionUI(navController: NavController) {
         }
     }
 
+
     // 🧹 Clear otomatis saat aplikasi terminate
     val lifecycleOwner = remember { ProcessLifecycleOwner.get() }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) {
-                // Ketika app ke background / terminate
+            if (event == Lifecycle.Event.ON_DESTROY) {
                 storage.clearAll()
-                Log.d("LocalStorageControllerRC", "🧹 App di-stop — semua data dihapus")
+                Log.d("LocalStorageControllerRC", "🧹 App terminate — semua data dihapus")
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -165,6 +162,7 @@ private fun HotspotConnectionUI(navController: NavController) {
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
+
 
     // 🖼️ UI
     Box(modifier = Modifier.fillMaxSize()) {

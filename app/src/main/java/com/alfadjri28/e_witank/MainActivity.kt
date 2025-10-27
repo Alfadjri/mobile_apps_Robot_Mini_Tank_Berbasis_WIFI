@@ -14,7 +14,7 @@ import androidx.navigation.compose.rememberNavController
 import com.alfadjri28.e_witank.screen.SplashScreen
 import com.alfadjri28.e_witank.screens.HomeScreen
 import com.alfadjri28.e_witank.ui.theme.EWiTankTheme
-import com.alfadjri28.e_witank.screen.CameraSearchScreen
+import com.alfadjri28.e_witank.screen.CameraSearchAndStreamScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -50,10 +50,14 @@ class MainActivity : ComponentActivity() {
                         composable("camera_search/{ip}/{camID}") { backStackEntry ->
                             val ip = backStackEntry.arguments?.getString("ip") ?: ""
                             val camID = backStackEntry.arguments?.getString("camID") ?: ""
-                            CameraSearchScreen(navController = navController, ip = ip,
+                            CameraSearchAndStreamScreen(navController = navController, ip = ip,
                                 camID = camID
                             )
                         }
+//                        composable("camera_stream/{camIP}") { backStackEntry ->
+//                            val camIP = backStackEntry.arguments?.getString("camIP") ?: ""
+//                            CameraStreamScreen(navController = navController, camIP = camIP)
+//                        }
                     }
                 }
             }
