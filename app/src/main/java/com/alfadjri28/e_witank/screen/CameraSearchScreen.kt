@@ -93,7 +93,6 @@ fun MjpegStreamViewer(camIp: String, isFullscreen: Boolean, restartSignal: Boole
     var streamJob by remember { mutableStateOf<Job?>(null) }
 
     DisposableEffect(camIp, restartSignal) {
-        // Cancel stream lama jika ada
         streamJob?.cancel()
         bitmap = null
 
@@ -170,6 +169,52 @@ fun MjpegStreamViewer(camIp: String, isFullscreen: Boolean, restartSignal: Boole
     }
 }
 
+// ====================== Camera Control Buttons ======================
+@Composable
+fun CameraControlButtons(
+    modifier: Modifier = Modifier,
+    onUpLeft: () -> Unit,
+    onUpRight: () -> Unit,
+    onDownLeft: () -> Unit,
+    onDownRight: () -> Unit
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            Button(
+                onClick = onUpLeft,
+                modifier = Modifier.weight(1f).height(50.dp).padding(end = 4.dp)
+            ) { Icon(Icons.Default.ArrowBack, contentDescription = "Atas Kiri", modifier = Modifier.rotate(90f)) }
+
+            Button(
+                onClick = onUpRight,
+                modifier = Modifier.weight(1f).height(50.dp).padding(start = 4.dp)
+            ) { Icon(Icons.Default.ArrowBack, contentDescription = "Atas Kanan", modifier = Modifier.rotate(90f)) }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            Button(
+                onClick = onDownLeft,
+                modifier = Modifier.weight(1f).height(50.dp).padding(end = 4.dp)
+            ) { Icon(Icons.Default.ArrowBack, contentDescription = "Bawah Kiri", modifier = Modifier.rotate(-90f)) }
+
+            Button(
+                onClick = onDownRight,
+                modifier = Modifier.weight(1f).height(50.dp).padding(start = 4.dp)
+            ) { Icon(Icons.Default.ArrowBack, contentDescription = "Bawah Kanan", modifier = Modifier.rotate(-90f)) }
+        }
+    }
+}
+
 // ====================== Main Screen ======================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -186,11 +231,7 @@ fun CameraSearchAndStreamScreen(
 
     val client = remember {
         HttpClient(Android) {
-            install(HttpTimeout) {
-                requestTimeoutMillis = 5000
-                connectTimeoutMillis = 3000
-                socketTimeoutMillis = 5000
-            }
+            install(HttpTimeout) { requestTimeoutMillis = 5000; connectTimeoutMillis = 3000; socketTimeoutMillis = 5000 }
             install(ContentNegotiation) { json(Json { isLenient = true; ignoreUnknownKeys = true }) }
         }
     }
@@ -225,9 +266,7 @@ fun CameraSearchAndStreamScreen(
                             IconButton(onClick = {
                                 restartStream = true
                                 isFullscreen = !isFullscreen
-                            }) {
-                                Icon(imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, contentDescription = "Toggle Fullscreen")
-                            }
+                            }) { Icon(if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, contentDescription = "Toggle Fullscreen") }
                         }
                     }
                 )
@@ -250,98 +289,89 @@ fun CameraSearchAndStreamScreen(
                 }
             } else {
                 viewModel.foundCameraIp?.let { camIp ->
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Box(
-                            modifier = Modifier.fillMaxWidth()
-                                .aspectRatio(16 / 9f)
-                                .padding(vertical = if (isFullscreen) 0.dp else 8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            MjpegStreamViewer(camIp, isFullscreen, restartStream)
-                            restartStream = false
-                        }
-                        if (!isFullscreen) {
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text("Kamera: $camIp", fontWeight = FontWeight.Medium)
-                            Spacer(modifier = Modifier.height(16.dp))
-//                            Tombol Pengendali Potret
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                // Baris tombol Atas (dua tombol)
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceEvenly
-                                ) {
-                                    Button(
-                                        onClick = { /* Aksi tombol Atas Kiri */ },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(50.dp)
-                                            .padding(end = 4.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.ArrowBack,
-                                            contentDescription = "Atas Kiri",
-                                            modifier = Modifier.rotate(90f)
-                                        )
-                                    }
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        // MJPEG Stream
+                        MjpegStreamViewer(camIp, isFullscreen, restartStream)
+                        restartStream = false
 
-                                    Button(
-                                        onClick = { /* Aksi tombol Atas Kanan */ },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(50.dp)
-                                            .padding(start = 4.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.ArrowBack,
-                                            contentDescription = "Atas Kanan",
-                                            modifier = Modifier.rotate(90f)
-                                        )
-                                    }
+                        val buttonSize = 80.dp  // ukuran tombol
+                        val buttonSpacing = 48.dp // jarak antar tombol
+                        val screenPadding = 24.dp // jarak dari tepi layar
+
+                        if (isFullscreen) {
+                            // Tombol horizontal di atas
+                            Row(
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .padding(top = screenPadding),
+                                horizontalArrangement = Arrangement.spacedBy(buttonSpacing)
+                            ) {
+                                IconButton(
+                                    onClick = { /* aksi kiri */ },
+                                    modifier = Modifier.size(buttonSize)
+                                ) {
+                                    Icon(
+                                        Icons.Default.ArrowBack,
+                                        contentDescription = "Kiri Atas",
+                                        tint = MaterialTheme.colorScheme.onBackground
+                                    )
                                 }
 
-                                // Baris tombol Bawah (dua tombol)
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceEvenly
+                                IconButton(
+                                    onClick = { /* aksi kanan */ },
+                                    modifier = Modifier.size(buttonSize)
                                 ) {
-                                    Button(
-                                        onClick = { /* Aksi tombol Bawah Kiri */ },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(50.dp)
-                                            .padding(end = 4.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.ArrowBack,
-                                            contentDescription = "Bawah Kiri",
-                                            modifier = Modifier.rotate(-90f)
-                                        )
-                                    }
-
-                                    Button(
-                                        onClick = { /* Aksi tombol Bawah Kanan */ },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(50.dp)
-                                            .padding(start = 4.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.ArrowBack,
-                                            contentDescription = "Bawah Kanan",
-                                            modifier = Modifier.rotate(-90f)
-                                        )
-                                    }
+                                    Icon(
+                                        Icons.Default.ArrowBack,
+                                        contentDescription = "Kanan Atas",
+                                        tint = MaterialTheme.colorScheme.onBackground,
+                                        modifier = Modifier.rotate(180f)
+                                    )
                                 }
                             }
+
+                            // Tombol horizontal di bawah
+                            Row(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = screenPadding),
+                                horizontalArrangement = Arrangement.spacedBy(buttonSpacing)
+                            ) {
+                                IconButton(
+                                    onClick = { /* aksi kiri */ },
+                                    modifier = Modifier.size(buttonSize)
+                                ) {
+                                    Icon(
+                                        Icons.Default.ArrowBack,
+                                        contentDescription = "Kiri Bawah",
+                                        tint = MaterialTheme.colorScheme.onBackground
+                                    )
+                                }
+
+                                IconButton(
+                                    onClick = { /* aksi kanan */ },
+                                    modifier = Modifier.size(buttonSize)
+                                ) {
+                                    Icon(
+                                        Icons.Default.ArrowBack,
+                                        contentDescription = "Kanan Bawah",
+                                        tint = MaterialTheme.colorScheme.onBackground,
+                                        modifier = Modifier.rotate(180f)
+                                    )
+                                }
+                            }
+                        } else {
+                            // Mode non-fullscreen: tombol biasa
+                            CameraControlButtons(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(16.dp)
+                                    .fillMaxWidth(),
+                                onUpLeft = { /* aksi */ },
+                                onUpRight = { /* aksi */ },
+                                onDownLeft = { /* aksi */ },
+                                onDownRight = { /* aksi */ }
+                            )
                         }
                     }
                 }
@@ -369,3 +399,4 @@ fun CameraSearchAndStreamScreen(
         }
     }
 }
+
