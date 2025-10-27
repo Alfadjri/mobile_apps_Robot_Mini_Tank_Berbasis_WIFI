@@ -10,6 +10,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material3.*
@@ -255,9 +256,9 @@ fun CameraSearchAndStreamScreen(
                         verticalArrangement = Arrangement.Center
                     ) {
                         Box(
-                            modifier = Modifier.fillMaxWidth(if (isFullscreen) 1f else 0.9f)
+                            modifier = Modifier.fillMaxWidth()
                                 .aspectRatio(16 / 9f)
-                                .padding(8.dp),
+                                .padding(vertical = if (isFullscreen) 0.dp else 8.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             MjpegStreamViewer(camIp, isFullscreen, restartStream)
@@ -266,6 +267,81 @@ fun CameraSearchAndStreamScreen(
                         if (!isFullscreen) {
                             Spacer(modifier = Modifier.height(16.dp))
                             Text("Kamera: $camIp", fontWeight = FontWeight.Medium)
+                            Spacer(modifier = Modifier.height(16.dp))
+//                            Tombol Pengendali Potret
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                // Baris tombol Atas (dua tombol)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceEvenly
+                                ) {
+                                    Button(
+                                        onClick = { /* Aksi tombol Atas Kiri */ },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(50.dp)
+                                            .padding(end = 4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowBack,
+                                            contentDescription = "Atas Kiri",
+                                            modifier = Modifier.rotate(90f)
+                                        )
+                                    }
+
+                                    Button(
+                                        onClick = { /* Aksi tombol Atas Kanan */ },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(50.dp)
+                                            .padding(start = 4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowBack,
+                                            contentDescription = "Atas Kanan",
+                                            modifier = Modifier.rotate(90f)
+                                        )
+                                    }
+                                }
+
+                                // Baris tombol Bawah (dua tombol)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceEvenly
+                                ) {
+                                    Button(
+                                        onClick = { /* Aksi tombol Bawah Kiri */ },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(50.dp)
+                                            .padding(end = 4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowBack,
+                                            contentDescription = "Bawah Kiri",
+                                            modifier = Modifier.rotate(-90f)
+                                        )
+                                    }
+
+                                    Button(
+                                        onClick = { /* Aksi tombol Bawah Kanan */ },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(50.dp)
+                                            .padding(start = 4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowBack,
+                                            contentDescription = "Bawah Kanan",
+                                            modifier = Modifier.rotate(-90f)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
