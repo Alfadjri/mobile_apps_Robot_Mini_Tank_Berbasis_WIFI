@@ -16,6 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -110,37 +111,31 @@ fun MjpegStreamViewer(camIp: String, isFullscreen: Boolean) {
                 val url = URL("http://$camIp/stream")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.setRequestProperty("User-Agent", "E_Witank_MJPEG_Viewer")
-                conn.readTimeout = 0 // biar nggak timeout
+                conn.readTimeout = 0
                 conn.connectTimeout = 5000
                 conn.connect()
 
                 val input = BufferedInputStream(conn.inputStream)
-                val boundary = "--frame"
                 val delimiter = "\r\n\r\n".toByteArray()
                 val headerBuffer = ByteArrayOutputStream()
 
                 while (isActive) {
-                    // Baca header tiap frame
                     headerBuffer.reset()
-                    var prev = 0
-                    var curr = 0
+                    var curr: Int
                     while (true) {
                         curr = input.read()
                         if (curr == -1) return@launch
                         headerBuffer.write(curr)
-                        if (headerBuffer.size() >= delimiter.size) {
-                            val arr = headerBuffer.toByteArray()
-                            if (arr.copyOfRange(arr.size - delimiter.size, arr.size).contentEquals(delimiter)) {
-                                break
-                            }
-                        }
+                        val arr = headerBuffer.toByteArray()
+                        if (arr.size >= delimiter.size &&
+                            arr.copyOfRange(arr.size - delimiter.size, arr.size).contentEquals(delimiter)
+                        ) break
                     }
 
                     val header = headerBuffer.toString(Charsets.ISO_8859_1.name())
-                    val contentLength = Regex("Content-Length:\\s*(\\d+)")
-                        .find(header)?.groupValues?.get(1)?.toIntOrNull() ?: continue
+                    val contentLength = Regex("Content-Length:\\s*(\\d+)").find(header)
+                        ?.groupValues?.get(1)?.toIntOrNull() ?: continue
 
-                    // Baca data gambar
                     val imageBytes = ByteArray(contentLength)
                     var offset = 0
                     while (offset < contentLength) {
@@ -149,7 +144,6 @@ fun MjpegStreamViewer(camIp: String, isFullscreen: Boolean) {
                         offset += bytesRead
                     }
 
-                    // Decode ke bitmap
                     val bmp = BitmapFactory.decodeByteArray(imageBytes, 0, contentLength)
                     bmp?.let {
                         withContext(Dispatchers.Main) {
@@ -157,7 +151,6 @@ fun MjpegStreamViewer(camIp: String, isFullscreen: Boolean) {
                         }
                     }
 
-                    // Baca dua newline sisa
                     input.read()
                     input.read()
                 }
@@ -169,13 +162,10 @@ fun MjpegStreamViewer(camIp: String, isFullscreen: Boolean) {
             }
         }
 
-        onDispose {
-            Log.w("MJPEG", "⏹ Stream dihentikan ($camIp)")
-            job.cancel()
-        }
+        onDispose { job.cancel() }
     }
 
-    // UI Tampilan
+    // 🌀 UI Tampilan Stream
     Box(
         modifier = Modifier
             .then(if (isFullscreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth().aspectRatio(16 / 9f))
@@ -183,11 +173,18 @@ fun MjpegStreamViewer(camIp: String, isFullscreen: Boolean) {
         contentAlignment = Alignment.Center
     ) {
         bitmap?.let {
-            Image(bitmap = it, contentDescription = "Live Stream", modifier = Modifier.fillMaxSize())
+            // 🔥 Tambahkan rotasi 90° kalau fullscreen aktif
+            val rotationAngle = if (isFullscreen) 90f else 0f
+            Image(
+                bitmap = it,
+                contentDescription = "Live Stream",
+                modifier = Modifier
+                    .fillMaxSize()
+                    .rotate(rotationAngle)
+            )
         } ?: CircularProgressIndicator()
     }
 }
-
 
 private fun ByteArray.indexOfSequence(seq: ByteArray): Int {
     outer@ for (i in 0..this.size - seq.size) {
@@ -210,6 +207,9 @@ fun CameraSearchAndStreamScreen(
     val storage = remember { LocalStorageControllerRC(context) }
     var isFullscreen by remember { mutableStateOf(false) }
 
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
     val client = remember {
         HttpClient(Android) {
             install(HttpTimeout) {
@@ -223,6 +223,7 @@ fun CameraSearchAndStreamScreen(
         }
     }
 
+    // tombol back di fullscreen
     BackHandler(enabled = isFullscreen) {
         Log.d("UI", "🔙 Keluar dari fullscreen")
         isFullscreen = false
@@ -243,6 +244,7 @@ fun CameraSearchAndStreamScreen(
 
     Scaffold(
         topBar = {
+            // 🔧 Tampilkan TopAppBar hanya jika fullscreen OFF
             if (!isFullscreen) {
                 TopAppBar(
                     title = { Text(if (viewModel.showStream) "Live Camera Stream" else "Pindai Kamera RC") },
@@ -269,8 +271,11 @@ fun CameraSearchAndStreamScreen(
             }
         }
     ) { padding ->
+
         Box(
-            modifier = Modifier.fillMaxSize().padding(padding),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
             contentAlignment = Alignment.Center
         ) {
             if (!viewModel.showStream) {
@@ -290,7 +295,33 @@ fun CameraSearchAndStreamScreen(
                 }
             } else {
                 viewModel.foundCameraIp?.let { camIp ->
-                    MjpegStreamViewer(camIp, isFullscreen)
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        // tampilkan stream
+                        MjpegStreamViewer(camIp, isFullscreen)
+
+                        // 🔧 Tambahkan tombol exit fullscreen di pojok kanan atas
+                        if (isFullscreen) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(16.dp),
+                                contentAlignment = Alignment.TopEnd
+                            ) {
+                                IconButton(
+                                    onClick = { isFullscreen = false },
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .padding(4.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.FullscreenExit,
+                                        contentDescription = "Exit Fullscreen",
+                                        tint = MaterialTheme.colorScheme.onBackground
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -322,3 +353,4 @@ fun CameraSearchAndStreamScreen(
         }
     }
 }
+
