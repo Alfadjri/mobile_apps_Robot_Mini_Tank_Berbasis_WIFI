@@ -60,11 +60,8 @@ class CameraViewModel : ViewModel() {
         val scanner = CameraScanner(ip, camID, storage, client)
 
         viewModelScope.launch {
-            Log.d("SCAN", "🚀 Mulai scan kamera (IP awal: $ip, camID: $camID)")
             repeat(retries) { attempt ->
                 var found = false
-                Log.d("SCAN", "Percobaan scan ke-${attempt + 1}")
-
                 scanner.scan(this) { response, host ->
                     if (host != null) {
                         foundCameraIp = host
@@ -72,10 +69,6 @@ class CameraViewModel : ViewModel() {
                         statusText = "✅ Kamera ditemukan di $host"
                         showStream = true
                         found = true
-                        Log.i("SCAN", "Kamera ditemukan di $host (camID: ${response?.cam_id})")
-                    } else {
-                        Log.w("SCAN", "Kamera tidak ditemukan pada percobaan ke-${attempt + 1}")
-                        statusText = "⚠️ Kamera tidak ditemukan (percobaan ${attempt + 1}/$retries)"
                     }
                 }
 
@@ -83,17 +76,9 @@ class CameraViewModel : ViewModel() {
                     progress = scanner.progress
                     delay(50)
                 }
-
-                if (found) {
-                    Log.d("SCAN", "Berhenti scan karena kamera sudah ditemukan.")
-                    return@launch
-                }
+                if (found) return@launch
             }
-
-            if (!showStream) {
-                statusText = "❌ Kamera tidak ditemukan setelah $retries percobaan."
-                Log.e("SCAN", "Gagal menemukan kamera setelah $retries kali.")
-            }
+            if (!showStream) statusText = "❌ Kamera tidak ditemukan setelah $retries percobaan."
             isScanning = false
         }
     }
@@ -101,21 +86,28 @@ class CameraViewModel : ViewModel() {
 
 // ====================== MJPEG Streamer ======================
 @Composable
-fun MjpegStreamViewer(camIp: String, isFullscreen: Boolean) {
+fun MjpegStreamViewer(camIp: String, isFullscreen: Boolean, restartSignal: Boolean) {
     var bitmap by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
     val scope = rememberCoroutineScope()
+    var streamJob by remember { mutableStateOf<Job?>(null) }
 
-    DisposableEffect(camIp) {
-        val job = scope.launch(Dispatchers.IO) {
+    DisposableEffect(camIp, restartSignal) {
+        // Cancel stream lama jika ada
+        streamJob?.cancel()
+        bitmap = null
+
+        streamJob = scope.launch(Dispatchers.IO) {
+            var conn: HttpURLConnection? = null
+            var input: BufferedInputStream? = null
             try {
                 val url = URL("http://$camIp/stream")
-                val conn = url.openConnection() as HttpURLConnection
+                conn = url.openConnection() as HttpURLConnection
                 conn.setRequestProperty("User-Agent", "E_Witank_MJPEG_Viewer")
                 conn.readTimeout = 0
                 conn.connectTimeout = 5000
                 conn.connect()
 
-                val input = BufferedInputStream(conn.inputStream)
+                input = BufferedInputStream(conn.inputStream)
                 val delimiter = "\r\n\r\n".toByteArray()
                 val headerBuffer = ByteArrayOutputStream()
 
@@ -146,52 +138,35 @@ fun MjpegStreamViewer(camIp: String, isFullscreen: Boolean) {
 
                     val bmp = BitmapFactory.decodeByteArray(imageBytes, 0, contentLength)
                     bmp?.let {
-                        withContext(Dispatchers.Main) {
-                            bitmap = it.asImageBitmap()
-                        }
+                        withContext(Dispatchers.Main) { bitmap = it.asImageBitmap() }
                     }
 
                     input.read()
                     input.read()
                 }
-
-                input.close()
-                conn.disconnect()
             } catch (e: Exception) {
                 Log.e("MJPEG", "❌ Stream error: ${e.message}")
+            } finally {
+                input?.close()
+                conn?.disconnect()
             }
         }
 
-        onDispose { job.cancel() }
+        onDispose {
+            streamJob?.cancel()
+            bitmap = null
+        }
     }
 
-    // 🌀 UI Tampilan Stream
     Box(
-        modifier = Modifier
-            .then(if (isFullscreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth().aspectRatio(16 / 9f))
-            .padding(8.dp),
+        modifier = Modifier.fillMaxSize().padding(8.dp),
         contentAlignment = Alignment.Center
     ) {
         bitmap?.let {
-            // 🔥 Tambahkan rotasi 90° kalau fullscreen aktif
             val rotationAngle = if (isFullscreen) 90f else 0f
-            Image(
-                bitmap = it,
-                contentDescription = "Live Stream",
-                modifier = Modifier
-                    .fillMaxSize()
-                    .rotate(rotationAngle)
-            )
+            Image(bitmap = it, contentDescription = "Live Stream", modifier = Modifier.fillMaxSize().rotate(rotationAngle))
         } ?: CircularProgressIndicator()
     }
-}
-
-private fun ByteArray.indexOfSequence(seq: ByteArray): Int {
-    outer@ for (i in 0..this.size - seq.size) {
-        for (j in seq.indices) if (this[i + j] != seq[j]) continue@outer
-        return i
-    }
-    return -1
 }
 
 // ====================== Main Screen ======================
@@ -206,9 +181,7 @@ fun CameraSearchAndStreamScreen(
     val context = LocalContext.current
     val storage = remember { LocalStorageControllerRC(context) }
     var isFullscreen by remember { mutableStateOf(false) }
-
-    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
-    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    var restartStream by remember { mutableStateOf(false) }
 
     val client = remember {
         HttpClient(Android) {
@@ -217,17 +190,11 @@ fun CameraSearchAndStreamScreen(
                 connectTimeoutMillis = 3000
                 socketTimeoutMillis = 5000
             }
-            install(ContentNegotiation) {
-                json(Json { isLenient = true; ignoreUnknownKeys = true })
-            }
+            install(ContentNegotiation) { json(Json { isLenient = true; ignoreUnknownKeys = true }) }
         }
     }
 
-    // tombol back di fullscreen
-    BackHandler(enabled = isFullscreen) {
-        Log.d("UI", "🔙 Keluar dari fullscreen")
-        isFullscreen = false
-    }
+    BackHandler(enabled = isFullscreen) { isFullscreen = false }
 
     LaunchedEffect(camID) {
         val cachedIP = storage.getCamIPByCamID(camID)
@@ -237,14 +204,12 @@ fun CameraSearchAndStreamScreen(
             viewModel.statusText = "✅ Kamera tersimpan di $cachedIP"
             viewModel.showStream = true
         } else {
-            Log.d("SCAN", "🚀 Mulai proses scan kamera...")
             viewModel.startScan(ip, camID, storage, client)
         }
     }
 
     Scaffold(
         topBar = {
-            // 🔧 Tampilkan TopAppBar hanya jika fullscreen OFF
             if (!isFullscreen) {
                 TopAppBar(
                     title = { Text(if (viewModel.showStream) "Live Camera Stream" else "Pindai Kamera RC") },
@@ -252,18 +217,15 @@ fun CameraSearchAndStreamScreen(
                         IconButton(onClick = {
                             viewModel.showStream = false
                             navController.popBackStack()
-                        }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali")
-                        }
+                        }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali") }
                     },
                     actions = {
                         if (viewModel.showStream) {
-                            IconButton(onClick = { isFullscreen = !isFullscreen }) {
-                                Icon(
-                                    imageVector = if (isFullscreen)
-                                        Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                                    contentDescription = "Toggle Fullscreen"
-                                )
+                            IconButton(onClick = {
+                                restartStream = true
+                                isFullscreen = !isFullscreen
+                            }) {
+                                Icon(imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, contentDescription = "Toggle Fullscreen")
                             }
                         }
                     }
@@ -271,13 +233,7 @@ fun CameraSearchAndStreamScreen(
             }
         }
     ) { padding ->
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
-            contentAlignment = Alignment.Center
-        ) {
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (!viewModel.showStream) {
                 Column(
                     modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -287,39 +243,29 @@ fun CameraSearchAndStreamScreen(
                     Text("Controller IP: $ip", fontWeight = FontWeight.Bold)
                     Text("Controller camID: $camID", fontWeight = FontWeight.Medium)
                     Spacer(modifier = Modifier.height(16.dp))
-                    if (viewModel.isScanning) {
-                        LinearProgressIndicator(progress = viewModel.progress, modifier = Modifier.fillMaxWidth())
-                        Spacer(modifier = Modifier.height(8.dp))
-                    }
+                    if (viewModel.isScanning) LinearProgressIndicator(progress = viewModel.progress, modifier = Modifier.fillMaxWidth())
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text(viewModel.statusText)
                 }
             } else {
                 viewModel.foundCameraIp?.let { camIp ->
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        // tampilkan stream
-                        MjpegStreamViewer(camIp, isFullscreen)
-
-                        // 🔧 Tambahkan tombol exit fullscreen di pojok kanan atas
-                        if (isFullscreen) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(16.dp),
-                                contentAlignment = Alignment.TopEnd
-                            ) {
-                                IconButton(
-                                    onClick = { isFullscreen = false },
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .padding(4.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.FullscreenExit,
-                                        contentDescription = "Exit Fullscreen",
-                                        tint = MaterialTheme.colorScheme.onBackground
-                                    )
-                                }
-                            }
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth(if (isFullscreen) 1f else 0.9f)
+                                .aspectRatio(16 / 9f)
+                                .padding(8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            MjpegStreamViewer(camIp, isFullscreen, restartStream)
+                            restartStream = false
+                        }
+                        if (!isFullscreen) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("Kamera: $camIp", fontWeight = FontWeight.Medium)
                         }
                     }
                 }
@@ -327,22 +273,16 @@ fun CameraSearchAndStreamScreen(
         }
     }
 
-    // ====================== Fullscreen Mode ======================
+    // Fullscreen handling
     LaunchedEffect(isFullscreen) {
         val activity = context as? Activity ?: return@LaunchedEffect
         val window = activity.window
         if (isFullscreen) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                window.insetsController?.let {
-                    it.hide(android.view.WindowInsets.Type.systemBars())
-                    it.systemBarsBehavior =
-                        android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                }
+                window.insetsController?.hide(android.view.WindowInsets.Type.systemBars())
+                window.insetsController?.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             } else {
-                window.decorView.systemUiVisibility =
-                    View.SYSTEM_UI_FLAG_FULLSCREEN or
-                            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
             }
         } else {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -353,4 +293,3 @@ fun CameraSearchAndStreamScreen(
         }
     }
 }
-
