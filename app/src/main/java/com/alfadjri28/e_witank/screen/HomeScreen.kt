@@ -132,15 +132,23 @@ private fun HotspotConnectionUI(navController: NavController) {
     LaunchedEffect(Unit) {
         while (true) {
             val currentStatus = checkHotspotStatus()
-
-            // Hapus data hanya jika hotspot mati
-            if (!currentStatus && isHotspotActive) {
+            val currentDeviceList = storage.getController()
+            if (!currentStatus) {
                 storage.clearAll()
                 deviceList = emptyList()
-                Log.d("Hotspot", "🔥 Hotspot mati — data LocalStorageControllerRC dihapus")
-            } else if (currentStatus) {
-                deviceList = storage.getController()
+                Log.d("Hotspot", "🔥 Hotspot mati — semua data LocalStorageControllerRC dihapus")
             }
+
+            // Hapus data hanya jika hotspot mati
+            else if (currentStatus && currentDeviceList.isEmpty()) {
+                storage.clearAll()
+                deviceList = emptyList()
+                Log.d("Hotspot", "⚠️ Tidak ada device yang connect — data dihapus")
+            }
+            else {
+                deviceList = currentDeviceList
+            }
+
 
             isHotspotActive = currentStatus
             delay(3000)

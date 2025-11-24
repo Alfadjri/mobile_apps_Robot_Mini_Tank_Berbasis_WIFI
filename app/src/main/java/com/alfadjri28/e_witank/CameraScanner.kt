@@ -48,7 +48,6 @@ class CameraScanner(
                             url = "http://$host/",
                             formParameters = parameters { append("password", camID) }
                         ).body()
-
                         if (response.status == "ok" && response.model == "CAM") {
                             val foundCamId = response.cam_id ?: camID
                             val updatedController = ControllerData(

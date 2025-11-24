@@ -54,10 +54,6 @@ class MainActivity : ComponentActivity() {
                                 camID = camID
                             )
                         }
-//                        composable("camera_stream/{camIP}") { backStackEntry ->
-//                            val camIP = backStackEntry.arguments?.getString("camIP") ?: ""
-//                            CameraStreamScreen(navController = navController, camIP = camIP)
-//                        }
                     }
                 }
             }

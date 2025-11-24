@@ -2,7 +2,6 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    // ⭐ 1. TAMBAHKAN BARIS INI UNTUK MENGAKTIFKAN PLUGIN ⭐
     kotlin("plugin.serialization") version "1.9.24"
 }
 
@@ -58,6 +57,7 @@ dependencies {
     implementation(libs.androidx.core.splashscreen)
     implementation("androidx.compose.material:material-icons-extended")
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.ui)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

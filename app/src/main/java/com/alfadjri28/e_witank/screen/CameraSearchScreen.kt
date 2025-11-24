@@ -1,13 +1,15 @@
 package com.alfadjri28.e_witank.screen
 
 import android.app.Activity
-import android.graphics.BitmapFactory
+import android.content.pm.ActivityInfo
 import android.os.Build
 import android.util.Log
 import android.view.View
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowBack
@@ -17,8 +19,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -32,18 +36,17 @@ import io.ktor.client.*
 import io.ktor.client.engine.android.*
 import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.request.*
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.Json
-import java.io.BufferedInputStream
-import java.io.ByteArrayOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
+
 
 // ====================== ViewModel ======================
 class CameraViewModel : ViewModel() {
     var foundCameraIp by mutableStateOf<String?>(null)
-    var foundCamId by mutableStateOf<String?>(null)
     var showStream by mutableStateOf(false)
     var isScanning by mutableStateOf(false)
     var progress by mutableStateOf(0f)
@@ -53,185 +56,107 @@ class CameraViewModel : ViewModel() {
         ip: String,
         camID: String,
         storage: LocalStorageControllerRC,
-        client: HttpClient,
-        retries: Int = 3
+        client: HttpClient
     ) {
         if (isScanning) return
         isScanning = true
         val scanner = CameraScanner(ip, camID, storage, client)
 
         viewModelScope.launch {
-            repeat(retries) { attempt ->
-                var found = false
-                scanner.scan(this) { response, host ->
-                    if (host != null) {
-                        foundCameraIp = host
-                        foundCamId = response?.cam_id ?: camID
-                        statusText = "✅ Kamera ditemukan di $host"
-                        showStream = true
-                        found = true
-                    }
+            var found = false
+            scanner.scan(this) { response, host ->
+                if (host != null) {
+                    Log.d("CAMERA_SCAN", "Kamera ditemukan! IP Kamera = $host (camID = $camID)")
+                    foundCameraIp = host
+                    statusText = "✅ Kamera ditemukan di $host"
+                    showStream = true
+                    found = true
                 }
-
-                while (isScanning && !found) {
-                    progress = scanner.progress
-                    delay(50)
-                }
-                if (found) return@launch
             }
-            if (!showStream) statusText = "❌ Kamera tidak ditemukan setelah $retries percobaan."
+
+            while (isScanning && !found) {
+                progress = scanner.progress
+                delay(50)
+            }
+            if (!found) statusText = "❌ Kamera tidak ditemukan."
             isScanning = false
         }
     }
 }
 
-// ====================== MJPEG Streamer ======================
-@Composable
-fun MjpegStreamViewer(camIp: String, isFullscreen: Boolean, restartSignal: Boolean) {
-    var bitmap by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
-    val scope = rememberCoroutineScope()
-    var streamJob by remember { mutableStateOf<Job?>(null) }
+class ControlViewModel : ViewModel() {
+    private val client = HttpClient(Android) {
+        install(HttpTimeout) { requestTimeoutMillis = 1500 }
+    }
 
-    DisposableEffect(camIp, restartSignal) {
-        streamJob?.cancel()
-        bitmap = null
+    private var commandJob: Job? = null
 
-        streamJob = scope.launch(Dispatchers.IO) {
-            var conn: HttpURLConnection? = null
-            var input: BufferedInputStream? = null
+    fun sendCommand(controllerIp: String, command: String) {
+        commandJob?.cancel()
+        commandJob = viewModelScope.launch(Dispatchers.IO) {
+            val url = "http://$controllerIp/a/$command"
             try {
-                val url = URL("http://$camIp/stream")
-                conn = url.openConnection() as HttpURLConnection
-                conn.setRequestProperty("User-Agent", "E_Witank_MJPEG_Viewer")
-                conn.readTimeout = 0
-                conn.connectTimeout = 5000
-                conn.connect()
-
-                input = BufferedInputStream(conn.inputStream)
-                val delimiter = "\r\n\r\n".toByteArray()
-                val headerBuffer = ByteArrayOutputStream()
-
-                while (isActive) {
-                    headerBuffer.reset()
-                    var curr: Int
-                    while (true) {
-                        curr = input.read()
-                        if (curr == -1) return@launch
-                        headerBuffer.write(curr)
-                        val arr = headerBuffer.toByteArray()
-                        if (arr.size >= delimiter.size &&
-                            arr.copyOfRange(arr.size - delimiter.size, arr.size).contentEquals(delimiter)
-                        ) break
-                    }
-
-                    val header = headerBuffer.toString(Charsets.ISO_8859_1.name())
-                    val contentLength = Regex("Content-Length:\\s*(\\d+)").find(header)
-                        ?.groupValues?.get(1)?.toIntOrNull() ?: continue
-
-                    val imageBytes = ByteArray(contentLength)
-                    var offset = 0
-                    while (offset < contentLength) {
-                        val bytesRead = input.read(imageBytes, offset, contentLength - offset)
-                        if (bytesRead == -1) break
-                        offset += bytesRead
-                    }
-
-                    val bmp = BitmapFactory.decodeByteArray(imageBytes, 0, contentLength)
-                    bmp?.let {
-                        withContext(Dispatchers.Main) { bitmap = it.asImageBitmap() }
-                    }
-
-                    input.read()
-                    input.read()
+                Log.d("CONTROL", "Mengirim perintah: $url")
+                client.get(url) {
+                    contentType(ContentType.Application.Json)
                 }
             } catch (e: Exception) {
-                Log.e("MJPEG", "❌ Stream error: ${e.message}")
-            } finally {
-                input?.close()
-                conn?.disconnect()
+                Log.e("CONTROL", "Gagal mengirim perintah ke $url: ${e.message}")
             }
         }
-
-        onDispose {
-            streamJob?.cancel()
-            bitmap = null
-        }
     }
 
-    Box(
-        modifier = Modifier.fillMaxSize().padding(8.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        bitmap?.let {
-            val rotationAngle = if (isFullscreen) 90f else 0f
-            Image(bitmap = it, contentDescription = "Live Stream", modifier = Modifier.fillMaxSize().rotate(rotationAngle))
-        } ?: CircularProgressIndicator()
+    override fun onCleared() {
+        client.close()
+        super.onCleared()
     }
 }
 
-// ====================== Camera Control Buttons ======================
+
+
+// ====================== HoldableButton ======================
 @Composable
-fun CameraControlButtons(
+fun HoldableIconButton(
     modifier: Modifier = Modifier,
-    onUpLeft: () -> Unit,
-    onUpRight: () -> Unit,
-    onDownLeft: () -> Unit,
-    onDownRight: () -> Unit
+    onPress: () -> Unit,
+    onRelease: () -> Unit,
+    content: @Composable () -> Unit
 ) {
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+    Box(
+        modifier = modifier.pointerInput(Unit) {
+            detectTapGestures(
+                onPress = {
+                    onPress()
+                    try {
+                        awaitRelease()
+                    } finally {
+                        onRelease()
+                    }
+                }
+            )
+        }
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            Button(
-                onClick = onUpLeft,
-                modifier = Modifier.weight(1f).height(50.dp).padding(end = 4.dp)
-            ) { Icon(Icons.Default.ArrowBack, contentDescription = "Atas Kiri", modifier = Modifier.rotate(90f)) }
-
-            Button(
-                onClick = onUpRight,
-                modifier = Modifier.weight(1f).height(50.dp).padding(start = 4.dp)
-            ) { Icon(Icons.Default.ArrowBack, contentDescription = "Atas Kanan", modifier = Modifier.rotate(90f)) }
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            Button(
-                onClick = onDownLeft,
-                modifier = Modifier.weight(1f).height(50.dp).padding(end = 4.dp)
-            ) { Icon(Icons.Default.ArrowBack, contentDescription = "Bawah Kiri", modifier = Modifier.rotate(-90f)) }
-
-            Button(
-                onClick = onDownRight,
-                modifier = Modifier.weight(1f).height(50.dp).padding(start = 4.dp)
-            ) { Icon(Icons.Default.ArrowBack, contentDescription = "Bawah Kanan", modifier = Modifier.rotate(-90f)) }
-        }
+        content()
     }
 }
 
-// ====================== Main Screen ======================
+// ====================== MAIN SCREEN ======================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CameraSearchAndStreamScreen(
     navController: NavController,
     ip: String,
     camID: String,
-    viewModel: CameraViewModel = viewModel()
+    cameraViewModel: CameraViewModel = viewModel(),
+    controlViewModel: ControlViewModel = viewModel()
 ) {
     val context = LocalContext.current
     val storage = remember { LocalStorageControllerRC(context) }
     var isFullscreen by remember { mutableStateOf(false) }
-    var restartStream by remember { mutableStateOf(false) }
 
     val client = remember {
         HttpClient(Android) {
-            install(HttpTimeout) { requestTimeoutMillis = 5000; connectTimeoutMillis = 3000; socketTimeoutMillis = 5000 }
+            install(HttpTimeout) { requestTimeoutMillis = 5000; connectTimeoutMillis = 3000 }
             install(ContentNegotiation) { json(Json { isLenient = true; ignoreUnknownKeys = true }) }
         }
     }
@@ -239,14 +164,15 @@ fun CameraSearchAndStreamScreen(
     BackHandler(enabled = isFullscreen) { isFullscreen = false }
 
     LaunchedEffect(camID) {
+        Log.d("CONTROLLER_IP", "IP Controller yang digunakan = $ip")
+        Log.d("CONTROLLER_IP", "camID = $camID")
         val cachedIP = storage.getCamIPByCamID(camID)
         if (!cachedIP.isNullOrEmpty()) {
-            viewModel.foundCameraIp = cachedIP
-            viewModel.foundCamId = camID
-            viewModel.statusText = "✅ Kamera tersimpan di $cachedIP"
-            viewModel.showStream = true
+            cameraViewModel.foundCameraIp = cachedIP
+            cameraViewModel.statusText = "✅ Kamera tersimpan di $cachedIP"
+            cameraViewModel.showStream = true
         } else {
-            viewModel.startScan(ip, camID, storage, client)
+            cameraViewModel.startScan(ip, camID, storage, client)
         }
     }
 
@@ -254,27 +180,29 @@ fun CameraSearchAndStreamScreen(
         topBar = {
             if (!isFullscreen) {
                 TopAppBar(
-                    title = { Text(if (viewModel.showStream) "Live Camera Stream" else "Pindai Kamera RC") },
+                    title = { Text(if (cameraViewModel.showStream) "Live Camera Stream" else "Pindai Kamera RC") },
                     navigationIcon = {
-                        IconButton(onClick = {
-                            viewModel.showStream = false
-                            navController.popBackStack()
-                        }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali") }
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali")
+                        }
                     },
                     actions = {
-                        if (viewModel.showStream) {
-                            IconButton(onClick = {
-                                restartStream = true
-                                isFullscreen = !isFullscreen
-                            }) { Icon(if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, contentDescription = "Toggle Fullscreen") }
+                        if (cameraViewModel.showStream) {
+                            IconButton(onClick = { isFullscreen = !isFullscreen }) {
+                                Icon(if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, "Toggle Fullscreen")
+                            }
                         }
                     }
                 )
             }
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (!viewModel.showStream) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            if (!cameraViewModel.showStream) {
                 Column(
                     modifier = Modifier.fillMaxSize().padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -282,96 +210,58 @@ fun CameraSearchAndStreamScreen(
                 ) {
                     Text("Controller IP: $ip", fontWeight = FontWeight.Bold)
                     Text("Controller camID: $camID", fontWeight = FontWeight.Medium)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    if (viewModel.isScanning) LinearProgressIndicator(progress = viewModel.progress, modifier = Modifier.fillMaxWidth())
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(viewModel.statusText)
+                    Spacer(Modifier.height(16.dp))
+                    if (cameraViewModel.isScanning) {
+                        LinearProgressIndicator(
+                            progress = { cameraViewModel.progress },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
+                    Text(cameraViewModel.statusText)
                 }
             } else {
-                viewModel.foundCameraIp?.let { camIp ->
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        // MJPEG Stream
-                        MjpegStreamViewer(camIp, isFullscreen, restartStream)
-                        restartStream = false
+                cameraViewModel.foundCameraIp?.let { camIp ->
+                    Box(Modifier.fillMaxSize()) {
+                        Log.d("CAMERA_STREAM", "Streaming menggunakan URL: http://$camIp:81/stream")
 
-                        val buttonSize = 80.dp  // ukuran tombol
-                        val buttonSpacing = 48.dp // jarak antar tombol
-                        val screenPadding = 24.dp // jarak dari tepi layar
+                        WebStreamViewer(camIp = camIp)
 
                         if (isFullscreen) {
-                            // Tombol horizontal di atas
-                            Row(
-                                modifier = Modifier
-                                    .align(Alignment.TopCenter)
-                                    .padding(top = screenPadding),
-                                horizontalArrangement = Arrangement.spacedBy(buttonSpacing)
+                            val buttonSize = 80.dp
+                            val pad = 24.dp
+                            val bg = Color.Black.copy(alpha = 0.3f)
+
+                            Column(
+                                modifier = Modifier.align(Alignment.CenterEnd).padding(end = pad),
+                                verticalArrangement = Arrangement.spacedBy(pad)
                             ) {
-                                IconButton(
-                                    onClick = { /* aksi kiri */ },
-                                    modifier = Modifier.size(buttonSize)
+                                HoldableIconButton(
+                                    onPress = { controlViewModel.sendCommand(ip, "maju") },
+                                    onRelease = { controlViewModel.sendCommand(ip, "stop") }
                                 ) {
                                     Icon(
-                                        Icons.Default.ArrowBack,
-                                        contentDescription = "Kiri Atas",
-                                        tint = MaterialTheme.colorScheme.onBackground
+                                        imageVector = Icons.Default.ArrowBack,
+                                        contentDescription = "Maju",
+                                        modifier = Modifier.size(buttonSize).clip(CircleShape)
+                                            .background(bg).padding(16.dp).rotate(90f),
+                                        tint = Color.White
                                     )
                                 }
 
-                                IconButton(
-                                    onClick = { /* aksi kanan */ },
-                                    modifier = Modifier.size(buttonSize)
+                                HoldableIconButton(
+                                    onPress = { controlViewModel.sendCommand(ip, "mundur") },
+                                    onRelease = { controlViewModel.sendCommand(ip, "stop") }
                                 ) {
                                     Icon(
-                                        Icons.Default.ArrowBack,
-                                        contentDescription = "Kanan Atas",
-                                        tint = MaterialTheme.colorScheme.onBackground,
-                                        modifier = Modifier.rotate(180f)
+                                        imageVector = Icons.Default.ArrowBack,
+                                        contentDescription = "Mundur",
+                                        modifier = Modifier.size(buttonSize).clip(CircleShape)
+                                            .background(bg).padding(16.dp).rotate(-90f),
+                                        tint = Color.White
                                     )
                                 }
                             }
-
-                            // Tombol horizontal di bawah
-                            Row(
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(bottom = screenPadding),
-                                horizontalArrangement = Arrangement.spacedBy(buttonSpacing)
-                            ) {
-                                IconButton(
-                                    onClick = { /* aksi kiri */ },
-                                    modifier = Modifier.size(buttonSize)
-                                ) {
-                                    Icon(
-                                        Icons.Default.ArrowBack,
-                                        contentDescription = "Kiri Bawah",
-                                        tint = MaterialTheme.colorScheme.onBackground
-                                    )
-                                }
-
-                                IconButton(
-                                    onClick = { /* aksi kanan */ },
-                                    modifier = Modifier.size(buttonSize)
-                                ) {
-                                    Icon(
-                                        Icons.Default.ArrowBack,
-                                        contentDescription = "Kanan Bawah",
-                                        tint = MaterialTheme.colorScheme.onBackground,
-                                        modifier = Modifier.rotate(180f)
-                                    )
-                                }
-                            }
-                        } else {
-                            // Mode non-fullscreen: tombol biasa
-                            CameraControlButtons(
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(16.dp)
-                                    .fillMaxWidth(),
-                                onUpLeft = { /* aksi */ },
-                                onUpRight = { /* aksi */ },
-                                onDownLeft = { /* aksi */ },
-                                onDownRight = { /* aksi */ }
-                            )
                         }
                     }
                 }
@@ -379,24 +269,26 @@ fun CameraSearchAndStreamScreen(
         }
     }
 
-    // Fullscreen handling
+    // FULLSCREEN + LOCK ORIENTATION
     LaunchedEffect(isFullscreen) {
-        val activity = context as? Activity ?: return@LaunchedEffect
-        val window = activity.window
+        val activity = context as Activity
         if (isFullscreen) {
+            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                window.insetsController?.hide(android.view.WindowInsets.Type.systemBars())
-                window.insetsController?.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                activity.window.insetsController?.hide(android.view.WindowInsets.Type.systemBars())
             } else {
-                window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                @Suppress("DEPRECATION")
+                activity.window.decorView.systemUiVisibility =
+                    (View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
             }
         } else {
+            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                window.insetsController?.show(android.view.WindowInsets.Type.systemBars())
+                activity.window.insetsController?.show(android.view.WindowInsets.Type.systemBars())
             } else {
-                window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+                @Suppress("DEPRECATION")
+                activity.window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
             }
         }
     }
 }
-
