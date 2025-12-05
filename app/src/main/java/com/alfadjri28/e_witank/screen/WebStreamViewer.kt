@@ -1,81 +1,173 @@
 package com.alfadjri28.e_witank.screen
 
-import android.annotation.SuppressLint
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.util.Log
-import android.view.View
-import android.view.ViewGroup
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.remember
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
+import java.io.BufferedInputStream
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
+import java.net.HttpURLConnection
+import java.net.URL
 
-@SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun WebStreamViewer(camIp: String) {
-    val context = LocalContext.current
-    val url = "http://$camIp:81/stream"
+    var frameBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var errorText by remember { mutableStateOf<String?>(null) }
 
-    // WebView hanya dibuat sekali
-    val webView = remember(camIp) {
-        WebView(context).apply {
+    LaunchedEffect(camIp) {
+        frameBitmap = null
+        errorText = null
 
-            settings.apply {
-                javaScriptEnabled = true
-                domStorageEnabled = true
-                loadWithOverviewMode = true
-                useWideViewPort = true
-                cacheMode = WebSettings.LOAD_NO_CACHE
-                userAgentString = "Mozilla/5.0"
-                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                mediaPlaybackRequiresUserGesture = false
-            }
+        withContext(Dispatchers.IO) {
+            val streamUrl = "http://$camIp:81/camp"
+            Log.d("MJPEG", "Start MJPEG stream from $streamUrl")
 
-            setLayerType(View.LAYER_TYPE_HARDWARE, null)
-
-            webViewClient = object : WebViewClient() {
-                override fun onReceivedError(
-                    view: WebView?,
-                    errorCode: Int,
-                    description: String?,
-                    failingUrl: String?
-                ) {
-                    Log.e("WEBVIEW", "Error: $description ($errorCode)")
-                }
-            }
-
-            loadUrl(url)
-        }
-    }
-
-    // Tampilkan WebView tanpa reload
-    AndroidView(
-        modifier = Modifier.fillMaxSize(),
-        factory = { webView }
-    )
-
-    // Destroy aman ketika composable hilang / IP berubah
-    DisposableEffect(camIp) {
-        onDispose {
+            var conn: HttpURLConnection? = null
             try {
-                Log.d("WEBVIEW", "Destroy WebView untuk IP $camIp")
+                val url = URL(streamUrl)
+                conn = (url.openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 5000
+                    readTimeout = 5000
+                    doInput = true
+                    useCaches = false
+                }
+                conn.connect()
 
-                webView.stopLoading()
+                val code = conn.responseCode
+                val ctype = conn.contentType
+                Log.d("MJPEG", "HTTP $code, contentType=$ctype")
 
-                (webView.parent as? ViewGroup)?.removeView(webView)
+                if (code != HttpURLConnection.HTTP_OK) {
+                    withContext(Dispatchers.Main) {
+                        errorText = "HTTP error: $code"
+                    }
+                    return@withContext
+                }
 
-                webView.loadUrl("about:blank")
-                webView.removeAllViews()
-                webView.destroy()
+                val input = BufferedInputStream(conn.inputStream, 16 * 1024)
 
+                var frameCount = 0
+
+                while (isActive) {
+                    // 1) Baca boundary, biasanya "--frame"
+                    val boundaryLine = readMjpegLine(input) ?: break
+                    if (!boundaryLine.startsWith("--")) {
+                        // bisa jadi \r\n kosong, skip
+                        continue
+                    }
+                    Log.d("MJPEG", "Boundary: $boundaryLine")
+
+                    // 2) Baca header sampai baris kosong
+                    var contentLength = -1
+                    while (true) {
+                        val headerLine = readMjpegLine(input) ?: return@withContext
+                        if (headerLine.isEmpty()) {
+                            break // end header
+                        }
+                        Log.d("MJPEG", "Header: $headerLine")
+                        val lower = headerLine.lowercase()
+                        if (lower.startsWith("content-length:")) {
+                            contentLength = headerLine.substringAfter(":").trim().toIntOrNull() ?: -1
+                        }
+                    }
+
+                    if (contentLength <= 0) {
+                        Log.w("MJPEG", "Content-Length invalid: $contentLength")
+                        continue
+                    }
+
+                    // 3) Baca tepat Content-Length byte
+                    val imgBytes = ByteArray(contentLength)
+                    var readTotal = 0
+                    while (readTotal < contentLength) {
+                        val r = input.read(imgBytes, readTotal, contentLength - readTotal)
+                        if (r == -1) {
+                            Log.d("MJPEG", "EOF saat baca gambar")
+                            return@withContext
+                        }
+                        readTotal += r
+                    }
+                    val opts = BitmapFactory.Options().apply {
+                        inSampleSize = 2
+                        inPreferredConfig = Bitmap.Config.RGB_565
+                    }
+
+                    // 4) Decode JPEG
+                    val bmp: Bitmap? = BitmapFactory.decodeByteArray(imgBytes, 0, imgBytes.size, opts)
+                    if (bmp != null) {
+                        frameCount++
+                        if (frameCount % 3 == 0) { // ambil 1 dari 3 frame
+                            withContext(Dispatchers.Main) {
+                                frameBitmap = bmp
+                            }
+                        }
+                    } else {
+                        Log.w("MJPEG", "Gagal decode frame ke-$frameCount, size=${imgBytes.size}")
+                    }
+                }
             } catch (e: Exception) {
-                Log.e("WEBVIEW", "Destroy error: ${e.message}")
+                Log.e("MJPEG", "Stream error: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    errorText = "Gagal memuat stream: ${e.message}"
+                }
+            } finally {
+                try { conn?.disconnect() } catch (_: Exception) {}
             }
         }
     }
+
+    // UI
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black),
+        contentAlignment = Alignment.Center
+    ) {
+        val bmp = frameBitmap
+        if (bmp != null) {
+            Image(
+                bitmap = bmp.asImageBitmap(),
+                contentDescription = "MJPEG Stream",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        }
+
+        errorText?.let { msg ->
+            Log.d("MJPEG", "ErrorText: $msg")
+        }
+    }
+}
+
+/**
+ * Baca satu "line" MJPEG (diakhiri '\n'), balikin string tanpa \r\n
+ * Return null kalau EOF.
+ */
+private fun readMjpegLine(input: InputStream): String? {
+    val baos = ByteArrayOutputStream()
+    while (true) {
+        val b = input.read()
+        if (b == -1) {
+            return if (baos.size() > 0) baos.toString(Charsets.US_ASCII.name()) else null
+        }
+        if (b == '\n'.code) {
+            break
+        }
+        if (b != '\r'.code) {
+            baos.write(b)
+        }
+    }
+    return baos.toString(Charsets.US_ASCII.name())
 }

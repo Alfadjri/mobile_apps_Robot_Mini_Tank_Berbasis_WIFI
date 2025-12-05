@@ -4,19 +4,5 @@
             <certificates src="system" />
         </trust-anchors>
     </base-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <!-- Semua jaringan 192.168.*.* -->
-        <domain includeSubdomains="true">192.168</domain>
-
-        <!-- Semua jaringan 10.*.*.* -->
-        <domain includeSubdomains="true">10</domain>
-
-        <!-- Semua jaringan 172.16–172.31 -->
-        <domain includeSubdomains="true">172</domain>
-
-        <!-- Localhost -->
-        <domain includeSubdomains="true">localhost</domain>
-        <domain includeSubdomains="true">127.0.0.1</domain>
-    </domain-config>
 </network-security-config>
     

@@ -37,7 +37,6 @@ import java.net.Inet4Address
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.Socket
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DeviceListScreen(navController: NavController) {
@@ -62,6 +61,9 @@ fun DeviceListScreen(navController: NavController) {
     var isScanning by remember { mutableStateOf(false) }
     var scanProgress by remember { mutableFloatStateOf(0f) }
     var scanStatusText by remember { mutableStateOf("Tekan tombol untuk memulai") }
+
+    // 🔴 Pesan error khusus kalau tidak ada WiFi / hotspot
+    var networkErrorMessage by remember { mutableStateOf<String?>(null) }
 
     // Ambil data yang sudah disimpan di local storage
     var savedControllers by remember { mutableStateOf(storage.getController()) }
@@ -89,15 +91,18 @@ fun DeviceListScreen(navController: NavController) {
         coroutineScope.launch {
             isScanning = true
             foundDevices = emptyList()
+            scanProgress = 0f
             scanStatusText = "Mendeteksi jaringan lokal..."
+            networkErrorMessage = null   // reset error dulu
 
             val ipAddress = withContext(Dispatchers.IO) {
                 try {
                     NetworkInterface.getNetworkInterfaces().toList()
-                        .filter { it.isUp && !it.isLoopback &&
-                                (it.displayName.contains("wlan") || it.displayName.contains("wifi") || it.displayName.contains("eth")) }
+                        .filter { it.isUp && !it.isLoopback }
                         .flatMap { it.inetAddresses.toList() }
-                        .firstOrNull { it is Inet4Address && !it.hostAddress.startsWith("127.") }
+                        .firstOrNull { addr ->
+                            addr is Inet4Address && addr.isSiteLocalAddress
+                        }
                         ?.hostAddress
                 } catch (e: Exception) {
                     Log.e("NETWORK_SCAN", "Gagal mendeteksi IP", e)
@@ -106,7 +111,10 @@ fun DeviceListScreen(navController: NavController) {
             }
 
             if (ipAddress == null) {
-                scanStatusText = "Tidak dapat mendeteksi IP perangkat."
+                // 🔴 Kondisi: tidak ada IP lokal → kemungkinan WiFi & hotspot tidak aktif
+                networkErrorMessage = "Hotspot dan WiFi tidak terhubung.\n" +
+                        "Silakan aktifkan salah satu dulu, lalu coba pindai lagi."
+                scanStatusText = "Tidak dapat memulai pemindaian."
                 isScanning = false
                 return@launch
             }
@@ -175,7 +183,10 @@ fun DeviceListScreen(navController: NavController) {
                 title = { Text("Pindai Perangkat di Jaringan") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Kembali"
+                        )
                     }
                 }
             )
@@ -193,7 +204,10 @@ fun DeviceListScreen(navController: NavController) {
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("Aplikasi membutuhkan izin untuk memindai jaringan.", textAlign = TextAlign.Center)
+                    Text(
+                        "Aplikasi membutuhkan izin untuk memindai jaringan.",
+                        textAlign = TextAlign.Center
+                    )
                     Spacer(modifier = Modifier.height(12.dp))
                     Button(onClick = { requestPermissionsLauncher.launch(requiredPermissions) }) {
                         Text("Berikan Izin")
@@ -201,6 +215,27 @@ fun DeviceListScreen(navController: NavController) {
                 }
             } else {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
+
+                    // 🔴 Tampil pesan kalau WiFi / hotspot tidak aktif
+                    if (networkErrorMessage != null) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 12.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer
+                            )
+                        ) {
+                            Text(
+                                text = networkErrorMessage!!,
+                                modifier = Modifier.padding(12.dp),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+
                     Button(
                         onClick = { startNetworkScan() },
                         enabled = !isScanning,
@@ -211,16 +246,34 @@ fun DeviceListScreen(navController: NavController) {
 
                     if (isScanning) {
                         Spacer(modifier = Modifier.height(16.dp))
-                        LinearProgressIndicator(progress = scanProgress, modifier = Modifier.fillMaxWidth())
-                        Text(scanStatusText, style = MaterialTheme.typography.bodySmall)
+                        LinearProgressIndicator(
+                            progress = scanProgress,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            scanStatusText,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            scanStatusText,
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))
-                    Text("Perangkat Ditemukan:", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Perangkat Ditemukan:",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
                     Spacer(modifier = Modifier.height(8.dp))
 
                     if (foundDevices.isEmpty()) {
-                        Text(if (isScanning) "Menunggu hasil..." else "Belum ada perangkat ditemukan.")
+                        Text(
+                            if (isScanning) "Menunggu hasil..." else "Belum ada perangkat ditemukan."
+                        )
                     } else {
                         Column(
                             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -232,15 +285,13 @@ fun DeviceListScreen(navController: NavController) {
                                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     rowDevices.forEach { device ->
-                                        // Cek apakah perangkat sudah tersimpan
                                         val isSaved = savedControllers.any { it.controllerIP == device.ip }
 
                                         DeviceListItemCard(
                                             device = device,
-                                            isSelected = isSaved, // kalau tersimpan jadi hijau
+                                            isSelected = isSaved,
                                             onClick = { d ->
                                                 if (!isSaved) {
-                                                    // Simpan ke local storage
                                                     storage.saveController(
                                                         ControllerData(
                                                             model = d.model,
@@ -248,12 +299,10 @@ fun DeviceListScreen(navController: NavController) {
                                                             controllerID = d.controllerId,
                                                             camIP = null,
                                                             camID = d.camId
-
                                                         )
                                                     )
-                                                    savedControllers = storage.getController() // update UI
+                                                    savedControllers = storage.getController()
                                                 }
-
                                             }
                                         )
                                     }
@@ -266,3 +315,4 @@ fun DeviceListScreen(navController: NavController) {
         }
     }
 }
+

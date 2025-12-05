@@ -30,6 +30,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.alfadjri28.e_witank.model.ConnectedDevice
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.os.Build
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -104,12 +107,28 @@ private fun PermissionRequestUI(onRequestPermission: () -> Unit) {
         }
     }
 }
+fun isWifiConnected(context: Context): Boolean {
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        val network = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(network) ?: return false
+        caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+    } else {
+        @Suppress("DEPRECATION")
+        val info = cm.activeNetworkInfo
+        @Suppress("DEPRECATION")
+        info != null && info.isConnected && info.type == ConnectivityManager.TYPE_WIFI
+    }
+}
 
 @Composable
 private fun HotspotConnectionUI(navController: NavController) {
     val context = LocalContext.current
     val storage = remember { LocalStorageControllerRC(context) }
+
     var isHotspotActive by remember { mutableStateOf(false) }
+    var isWifiConnectedNow by remember { mutableStateOf(false) }
     var deviceList by remember { mutableStateOf<List<ControllerData>>(emptyList()) }
     var selectedDevice by remember { mutableStateOf<ControllerData?>(null) }
 
@@ -128,33 +147,30 @@ private fun HotspotConnectionUI(navController: NavController) {
         }
     }
 
-    // 🔄 Pantau status hotspot
+    // 🔄 Pantau status jaringan
     LaunchedEffect(Unit) {
         while (true) {
-            val currentStatus = checkHotspotStatus()
+            val hotspotStatus = checkHotspotStatus()
+            val wifiStatus = isWifiConnected(context)
             val currentDeviceList = storage.getController()
-            if (!currentStatus) {
-                storage.clearAll()
-                deviceList = emptyList()
-                Log.d("Hotspot", "🔥 Hotspot mati — semua data LocalStorageControllerRC dihapus")
-            }
 
-            // Hapus data hanya jika hotspot mati
-            else if (currentStatus && currentDeviceList.isEmpty()) {
+            isHotspotActive = hotspotStatus
+            isWifiConnectedNow = wifiStatus
+
+            val networkReady = hotspotStatus || wifiStatus
+
+            if (!networkReady) {
+                // Tidak ada hotspot & tidak ada WiFi → kosongkan list
                 storage.clearAll()
                 deviceList = emptyList()
-                Log.d("Hotspot", "⚠️ Tidak ada device yang connect — data dihapus")
-            }
-            else {
+                Log.d("Network", "❌ Tidak ada WiFi/Hotspot — data dihapus")
+            } else {
                 deviceList = currentDeviceList
             }
 
-
-            isHotspotActive = currentStatus
             delay(3000)
         }
     }
-
 
     // 🧹 Clear otomatis saat aplikasi terminate
     val lifecycleOwner = remember { ProcessLifecycleOwner.get() }
@@ -171,11 +187,13 @@ private fun HotspotConnectionUI(navController: NavController) {
         }
     }
 
-
     // 🖼️ UI
+    val networkReady = isHotspotActive || isWifiConnectedNow
+
     Box(modifier = Modifier.fillMaxSize()) {
         when {
-            !isHotspotActive -> {
+            // 🔴 Tidak ada WiFi & tidak ada hotspot
+            !networkReady -> {
                 Column(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.Center,
@@ -183,20 +201,22 @@ private fun HotspotConnectionUI(navController: NavController) {
                 ) {
                     Icon(
                         imageVector = Icons.Default.WifiOff,
-                        contentDescription = "Hotspot Tidak Aktif",
+                        contentDescription = "Tidak ada koneksi",
                         tint = Color.Red,
                         modifier = Modifier.size(80.dp)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "Hotspot tidak aktif",
+                        "Hotspot dan WiFi tidak terhubung",
                         color = Color.Red,
-                        style = MaterialTheme.typography.titleMedium
+                        style = MaterialTheme.typography.titleMedium,
+                        textAlign = TextAlign.Center
                     )
                 }
             }
 
-            isHotspotActive && deviceList.isEmpty() -> {
+            // 🟢 Ada jaringan (WiFi / Hotspot) tapi belum ada device tersimpan
+            networkReady && deviceList.isEmpty() -> {
                 Column(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.Center,
@@ -204,20 +224,22 @@ private fun HotspotConnectionUI(navController: NavController) {
                 ) {
                     Icon(
                         imageVector = Icons.Default.Wifi,
-                        contentDescription = "Hotspot Aktif",
+                        contentDescription = "Jaringan Aktif",
                         tint = Color(0xFF2E7D32),
                         modifier = Modifier.size(80.dp)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "Hotspot aktif — cari perangkat sekarang",
+                        "Jaringan aktif — cari perangkat sekarang",
                         color = Color(0xFF2E7D32),
-                        style = MaterialTheme.typography.titleMedium
+                        style = MaterialTheme.typography.titleMedium,
+                        textAlign = TextAlign.Center
                     )
                 }
             }
 
-            isHotspotActive && deviceList.isNotEmpty() -> {
+            // 🟢 Ada jaringan & ada device tersimpan
+            networkReady && deviceList.isNotEmpty() -> {
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
@@ -225,7 +247,6 @@ private fun HotspotConnectionUI(navController: NavController) {
                 ) {
                     items(deviceList.size) { index ->
                         val item = deviceList[index]
-                        Log.d("Storage list", item.toString())
                         DeviceListItemCard(
                             device = ConnectedDevice(
                                 ip = item.controllerIP ?: "Unknown",
@@ -251,8 +272,8 @@ private fun HotspotConnectionUI(navController: NavController) {
             }
         }
 
-        // 🔹 Floating Bubble kanan bawah
-        if (isHotspotActive) {
+        // 🔹 FAB: bisa muncul kalau ada jaringan aktif (WiFi atau Hotspot)
+        if (networkReady) {
             FloatingActionButton(
                 onClick = { navController.navigate("device_list") },
                 containerColor = MaterialTheme.colorScheme.primary,
@@ -269,3 +290,4 @@ private fun HotspotConnectionUI(navController: NavController) {
         }
     }
 }
+
