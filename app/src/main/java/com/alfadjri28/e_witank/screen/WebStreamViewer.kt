@@ -2,6 +2,7 @@ package com.alfadjri28.e_witank.screen
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -22,10 +23,14 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 @Composable
-fun WebStreamViewer(camIp: String) {
+fun WebStreamViewer(
+    camIp: String,
+    rotationDegrees: Float = 0f   // 0f potret normal, 90f / -90f untuk koreksi arah
+) {
     var frameBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var errorText by remember { mutableStateOf<String?>(null) }
 
+    // ⚠️ LaunchedEffect hanya pakai camIp, jangan pakai rotationDegrees
     LaunchedEffect(camIp) {
         frameBitmap = null
         errorText = null
@@ -57,25 +62,17 @@ fun WebStreamViewer(camIp: String) {
                 }
 
                 val input = BufferedInputStream(conn.inputStream, 16 * 1024)
-
                 var frameCount = 0
 
                 while (isActive) {
-                    // 1) Baca boundary, biasanya "--frame"
                     val boundaryLine = readMjpegLine(input) ?: break
-                    if (!boundaryLine.startsWith("--")) {
-                        // bisa jadi \r\n kosong, skip
-                        continue
-                    }
+                    if (!boundaryLine.startsWith("--")) continue
                     Log.d("MJPEG", "Boundary: $boundaryLine")
 
-                    // 2) Baca header sampai baris kosong
                     var contentLength = -1
                     while (true) {
                         val headerLine = readMjpegLine(input) ?: return@withContext
-                        if (headerLine.isEmpty()) {
-                            break // end header
-                        }
+                        if (headerLine.isEmpty()) break
                         Log.d("MJPEG", "Header: $headerLine")
                         val lower = headerLine.lowercase()
                         if (lower.startsWith("content-length:")) {
@@ -88,7 +85,6 @@ fun WebStreamViewer(camIp: String) {
                         continue
                     }
 
-                    // 3) Baca tepat Content-Length byte
                     val imgBytes = ByteArray(contentLength)
                     var readTotal = 0
                     while (readTotal < contentLength) {
@@ -99,16 +95,39 @@ fun WebStreamViewer(camIp: String) {
                         }
                         readTotal += r
                     }
+
                     val opts = BitmapFactory.Options().apply {
                         inSampleSize = 2
                         inPreferredConfig = Bitmap.Config.RGB_565
                     }
 
-                    // 4) Decode JPEG
-                    val bmp: Bitmap? = BitmapFactory.decodeByteArray(imgBytes, 0, imgBytes.size, opts)
+                    val rawBmp = BitmapFactory.decodeByteArray(imgBytes, 0, imgBytes.size, opts)
+
+                    // 🔥 ROTASI bitmap di sini, bukan di Compose
+                    val bmp: Bitmap? = if (rawBmp != null && rotationDegrees != 0f) {
+                        try {
+                            val m = Matrix().apply { postRotate(rotationDegrees) }
+                            val rotated = Bitmap.createBitmap(
+                                rawBmp,
+                                0, 0,
+                                rawBmp.width,
+                                rawBmp.height,
+                                m,
+                                true
+                            )
+                            rawBmp.recycle()
+                            rotated
+                        } catch (e: Exception) {
+                            Log.e("MJPEG", "Gagal rotate bitmap: ${e.message}")
+                            rawBmp
+                        }
+                    } else {
+                        rawBmp
+                    }
+
                     if (bmp != null) {
                         frameCount++
-                        if (frameCount % 3 == 0) { // ambil 1 dari 3 frame
+                        if (frameCount % 3 == 0) {
                             withContext(Dispatchers.Main) {
                                 frameBitmap = bmp
                             }
@@ -141,7 +160,7 @@ fun WebStreamViewer(camIp: String) {
                 bitmap = bmp.asImageBitmap(),
                 contentDescription = "MJPEG Stream",
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Crop   // tetap fullscreen, crop sedikit kalau perlu
             )
         }
 
@@ -162,12 +181,9 @@ private fun readMjpegLine(input: InputStream): String? {
         if (b == -1) {
             return if (baos.size() > 0) baos.toString(Charsets.US_ASCII.name()) else null
         }
-        if (b == '\n'.code) {
-            break
-        }
-        if (b != '\r'.code) {
-            baos.write(b)
-        }
+        if (b == '\n'.code) break
+        if (b != '\r'.code) baos.write(b)
     }
     return baos.toString(Charsets.US_ASCII.name())
 }
+

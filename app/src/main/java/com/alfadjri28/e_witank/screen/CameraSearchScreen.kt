@@ -1,28 +1,19 @@
 package com.alfadjri28.e_witank.screen
 
 import android.app.Activity
-import android.content.pm.ActivityInfo
 import android.os.Build
 import android.util.Log
 import android.view.View
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -36,15 +27,14 @@ import io.ktor.client.*
 import io.ktor.client.engine.android.*
 import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
-import io.ktor.client.request.*
-import io.ktor.http.ContentType
-import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.Json
+import io.ktor.client.request.*
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
 
-
-// ====================== ViewModel ======================
+// ====================== ViewModel Kamera ======================
 class CameraViewModel : ViewModel() {
     var foundCameraIp by mutableStateOf<String?>(null)
     var showStream by mutableStateOf(false)
@@ -64,7 +54,7 @@ class CameraViewModel : ViewModel() {
 
         viewModelScope.launch {
             var found = false
-            scanner.scan(this) { response, host ->
+            scanner.scan(this) { _, host ->
                 if (host != null) {
                     Log.d("CAMERA_SCAN", "Kamera ditemukan! IP Kamera = $host (camID = $camID)")
                     foundCameraIp = host
@@ -84,17 +74,24 @@ class CameraViewModel : ViewModel() {
     }
 }
 
+// ====================== ViewModel Kontrol ======================
 class ControlViewModel : ViewModel() {
     private val client = HttpClient(Android) {
         install(HttpTimeout) { requestTimeoutMillis = 1500 }
     }
 
-    private var commandJob: Job? = null
+    private val commandJobs = mutableMapOf<String, Job?>()
 
-    fun sendCommand(controllerIp: String, command: String) {
-        commandJob?.cancel()
-        commandJob = viewModelScope.launch(Dispatchers.IO) {
-            val url = "http://$controllerIp/a/$command"
+    private fun launchForKey(key: String, block: suspend () -> Unit) {
+        commandJobs[key]?.cancel()
+        commandJobs[key] = viewModelScope.launch(Dispatchers.IO) {
+            block()
+        }
+    }
+
+    fun sendCommand(controllerIp: String, channel: String, command: String) {
+        val url = "http://$controllerIp/$channel/$command"
+        launchForKey(channel) {
             try {
                 Log.d("CONTROL", "Mengirim perintah: $url")
                 client.get(url) {
@@ -106,37 +103,15 @@ class ControlViewModel : ViewModel() {
         }
     }
 
+    fun sendBoth(controllerIp: String, command: String) {
+        sendCommand(controllerIp, "a", command)
+        sendCommand(controllerIp, "b", command)
+    }
+
     override fun onCleared() {
+        commandJobs.values.forEach { it?.cancel() }
         client.close()
         super.onCleared()
-    }
-}
-
-
-
-// ====================== HoldableButton ======================
-@Composable
-fun HoldableIconButton(
-    modifier: Modifier = Modifier,
-    onPress: () -> Unit,
-    onRelease: () -> Unit,
-    content: @Composable () -> Unit
-) {
-    Box(
-        modifier = modifier.pointerInput(Unit) {
-            detectTapGestures(
-                onPress = {
-                    onPress()
-                    try {
-                        awaitRelease()
-                    } finally {
-                        onRelease()
-                    }
-                }
-            )
-        }
-    ) {
-        content()
     }
 }
 
@@ -180,7 +155,14 @@ fun CameraSearchAndStreamScreen(
         topBar = {
             if (!isFullscreen) {
                 TopAppBar(
-                    title = { Text(if (cameraViewModel.showStream) "Live Camera Stream" else "Pindai Kamera RC") },
+                    title = {
+                        Text(
+                            if (cameraViewModel.showStream)
+                                "Live Camera Stream"
+                            else
+                                "Pindai Kamera RC"
+                        )
+                    },
                     navigationIcon = {
                         IconButton(onClick = { navController.popBackStack() }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali")
@@ -189,7 +171,10 @@ fun CameraSearchAndStreamScreen(
                     actions = {
                         if (cameraViewModel.showStream) {
                             IconButton(onClick = { isFullscreen = !isFullscreen }) {
-                                Icon(if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, "Toggle Fullscreen")
+                                Icon(
+                                    if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                                    contentDescription = "Toggle Fullscreen"
+                                )
                             }
                         }
                     }
@@ -204,7 +189,9 @@ fun CameraSearchAndStreamScreen(
         ) {
             if (!cameraViewModel.showStream) {
                 Column(
-                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
@@ -222,46 +209,48 @@ fun CameraSearchAndStreamScreen(
                 }
             } else {
                 cameraViewModel.foundCameraIp?.let { camIp ->
-                    Box(Modifier.fillMaxSize()) {
-                        Log.d("CAMERA_STREAM", "Streaming menggunakan URL: http://$camIp:81/stream")
-
-                        WebStreamViewer(camIp = camIp)
-
-                        if (isFullscreen) {
-                            val buttonSize = 80.dp
-                            val pad = 24.dp
-                            val bg = Color.Black.copy(alpha = 0.3f)
-
-                            Column(
-                                modifier = Modifier.align(Alignment.CenterEnd).padding(end = pad),
-                                verticalArrangement = Arrangement.spacedBy(pad)
+                    if (isFullscreen) {
+                        // ===================== MODE FULLSCREEN =====================
+                        Box(Modifier.fillMaxSize()) {
+                            WebStreamViewer(
+                                camIp = camIp,
+                                rotationDegrees = 90f
+                            )
+                            FullscreenTankControls(
+                                ip = ip,
+                                controlViewModel = controlViewModel,
+                                modifier = Modifier.fillMaxSize(),
+                                onExitFullscreen = { isFullscreen = false },
+                                onMenuClick = {
+                                    // nanti bisa diisi:
+                                    // - buka BottomSheet
+                                    // - dialog setting speed
+                                    // - ganti mode kontrol dll
+                                }
+                            )
+                        }
+                    } else {
+                        // ===================== MODE NON-FULLSCREEN =====================
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
                             ) {
-                                HoldableIconButton(
-                                    onPress = { controlViewModel.sendCommand(ip, "maju") },
-                                    onRelease = { controlViewModel.sendCommand(ip, "stop") }
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.ArrowBack,
-                                        contentDescription = "Maju",
-                                        modifier = Modifier.size(buttonSize).clip(CircleShape)
-                                            .background(bg).padding(16.dp).rotate(90f),
-                                        tint = Color.White
-                                    )
-                                }
-
-                                HoldableIconButton(
-                                    onPress = { controlViewModel.sendCommand(ip, "mundur") },
-                                    onRelease = { controlViewModel.sendCommand(ip, "stop") }
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.ArrowBack,
-                                        contentDescription = "Mundur",
-                                        modifier = Modifier.size(buttonSize).clip(CircleShape)
-                                            .background(bg).padding(16.dp).rotate(-90f),
-                                        tint = Color.White
-                                    )
-                                }
+                                WebStreamViewer(camIp = camIp)
                             }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            PortraitTankControls(
+                                ip = ip,
+                                controlViewModel = controlViewModel,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
                     }
                 }
@@ -269,20 +258,20 @@ fun CameraSearchAndStreamScreen(
         }
     }
 
-    // FULLSCREEN + LOCK ORIENTATION
+    // FULLSCREEN: hide/show system bar
     LaunchedEffect(isFullscreen) {
         val activity = context as Activity
         if (isFullscreen) {
-            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 activity.window.insetsController?.hide(android.view.WindowInsets.Type.systemBars())
             } else {
                 @Suppress("DEPRECATION")
                 activity.window.decorView.systemUiVisibility =
-                    (View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
+                    (View.SYSTEM_UI_FLAG_FULLSCREEN
+                            or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
             }
         } else {
-            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 activity.window.insetsController?.show(android.view.WindowInsets.Type.systemBars())
             } else {
