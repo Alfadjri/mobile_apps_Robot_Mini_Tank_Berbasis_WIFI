@@ -58,4 +58,11 @@ class LocalStorageControllerRC(context: Context) {
     private fun saveControllerList(list: List<ControllerData>) {
         sharedPreferences.edit().putString(KEY_CONTROLLERS, gson.toJson(list)).apply()
     }
+
+    fun deleteControllerByIP(ip: String) {
+        val currentList = getController().toMutableList()
+        val newList = currentList.filterNot { it.controllerIP == ip }
+        saveControllerList(newList)
+    }
+
 }

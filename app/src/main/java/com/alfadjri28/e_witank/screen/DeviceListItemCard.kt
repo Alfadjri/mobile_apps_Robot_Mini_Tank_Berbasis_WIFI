@@ -1,6 +1,7 @@
 package com.alfadjri28.e_witank.screen
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DirectionsCar
@@ -17,19 +18,25 @@ import com.alfadjri28.e_witank.model.ConnectedDevice
 fun DeviceListItemCard(
     device: ConnectedDevice,
     isSelected: Boolean,
-    onClick: (ConnectedDevice) -> Unit
+    onClick: (ConnectedDevice) -> Unit,
+    onLongClick: () -> Unit = {}
 ) {
     Card(
         modifier = Modifier
             .width(150.dp)
             .height(150.dp)
-            .clickable { onClick(device) },
+            .combinedClickable(
+                onClick = { onClick(device) },
+                onLongClick = { onLongClick() }
+            ),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         shape = MaterialTheme.shapes.large,
         colors = if (isSelected)
             CardDefaults.cardColors(containerColor = Color(0xFFB9F6CA))
         else
-            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
     ) {
         Column(
             modifier = Modifier.fillMaxSize(),

@@ -97,7 +97,7 @@ fun WebStreamViewer(
                     }
 
                     val opts = BitmapFactory.Options().apply {
-                        inSampleSize = 2
+                        inSampleSize = 1
                         inPreferredConfig = Bitmap.Config.RGB_565
                     }
 

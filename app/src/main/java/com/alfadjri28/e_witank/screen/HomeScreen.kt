@@ -131,6 +131,9 @@ private fun HotspotConnectionUI(navController: NavController) {
     var isWifiConnectedNow by remember { mutableStateOf(false) }
     var deviceList by remember { mutableStateOf<List<ControllerData>>(emptyList()) }
     var selectedDevice by remember { mutableStateOf<ControllerData?>(null) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var deviceToDelete by remember { mutableStateOf<ControllerData?>(null) }
+
 
     val wifiManager = remember(context) {
         context.applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
@@ -256,14 +259,14 @@ private fun HotspotConnectionUI(navController: NavController) {
                             ),
                             isSelected = selectedDevice?.controllerID == item.controllerID,
                             onClick = { selected ->
-                                selectedDevice = ControllerData(
-                                    model = selected.model,
-                                    controllerIP = selected.ip,
-                                    controllerID = selected.controllerId,
-                                    camIP = null,
-                                    camID = selected.camId
+                                selectedDevice = item
+                                navController.navigate(
+                                    "camera_search/${item.controllerIP}/${item.camID}"
                                 )
-                                navController.navigate("camera_search/${selected.ip}/${selected.camId}")
+                            },
+                            onLongClick = {
+                                deviceToDelete = item
+                                showDeleteDialog = true
                             }
                         )
                         Spacer(modifier = Modifier.height(8.dp))
@@ -287,6 +290,45 @@ private fun HotspotConnectionUI(navController: NavController) {
                     tint = Color.White
                 )
             }
+        }
+
+        if (showDeleteDialog && deviceToDelete != null) {
+            AlertDialog(
+                onDismissRequest = {
+                    showDeleteDialog = false
+                    deviceToDelete = null
+                },
+                title = {
+                    Text("Hapus Perangkat")
+                },
+                text = {
+                    Text(
+                        "Yakin ingin menghapus perangkat dengan IP:\n\n${deviceToDelete!!.controllerIP} ?"
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            storage.deleteControllerByIP(deviceToDelete!!.controllerIP)
+                            deviceList = storage.getController()
+                            showDeleteDialog = false
+                            deviceToDelete = null
+                        }
+                    ) {
+                        Text("Hapus", color = Color.Red)
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            showDeleteDialog = false
+                            deviceToDelete = null
+                        }
+                    ) {
+                        Text("Batal")
+                    }
+                }
+            )
         }
     }
 }
