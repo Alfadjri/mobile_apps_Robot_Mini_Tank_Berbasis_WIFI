@@ -23,6 +23,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.alfadjri28.e_witank.logic.CameraScanner
 import com.alfadjri28.e_witank.model.LocalStorageControllerRC
+import com.alfadjri28.e_witank.utils.setLandscape
+import com.alfadjri28.e_witank.utils.setPortrait
 import io.ktor.client.*
 import io.ktor.client.engine.android.*
 import io.ktor.client.plugins.*
@@ -172,7 +174,8 @@ fun CameraSearchAndStreamScreen(
                         if (cameraViewModel.showStream) {
                             IconButton(onClick = { isFullscreen = !isFullscreen }) {
                                 Icon(
-                                    if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                                    if (isFullscreen) Icons.Default.FullscreenExit
+                                    else Icons.Default.Fullscreen,
                                     contentDescription = "Toggle Fullscreen"
                                 )
                             }
@@ -211,24 +214,37 @@ fun CameraSearchAndStreamScreen(
                 cameraViewModel.foundCameraIp?.let { camIp ->
                     if (isFullscreen) {
                         // ===================== MODE FULLSCREEN =====================
-                        Box(Modifier.fillMaxSize()) {
+                        Box(modifier = Modifier.fillMaxSize()) {
+
+                            // 🎥 VIDEO FULL
                             WebStreamViewer(
                                 camIp = camIp,
-                                rotationDegrees = 90f
+                                rotationDegrees = 0f
                             )
+
+                            // 🔴 TOMBOL EXIT FULLSCREEN (KANAN ATAS)
+                            IconButton(
+                                onClick = { isFullscreen = false },
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(16.dp)
+                                    .size(48.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.FullscreenExit,
+                                    contentDescription = "Exit Fullscreen",
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+
+                            // 🕹️ KONTROL RC (KIRI & KANAN BAWAH)
                             FullscreenTankControls(
                                 ip = ip,
                                 controlViewModel = controlViewModel,
-                                modifier = Modifier.fillMaxSize(),
-                                onExitFullscreen = { isFullscreen = false },
-                                onMenuClick = {
-                                    // nanti bisa diisi:
-                                    // - buka BottomSheet
-                                    // - dialog setting speed
-                                    // - ganti mode kontrol dll
-                                }
+                                modifier = Modifier.fillMaxSize()
                             )
                         }
+
                     } else {
                         // ===================== MODE NON-FULLSCREEN =====================
                         Column(
@@ -261,9 +277,14 @@ fun CameraSearchAndStreamScreen(
     // FULLSCREEN: hide/show system bar
     LaunchedEffect(isFullscreen) {
         val activity = context as Activity
+
         if (isFullscreen) {
+            // 🔥 MASUK FULLSCREEN → LANDSCAPE
+            setLandscape(activity)
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                activity.window.insetsController?.hide(android.view.WindowInsets.Type.systemBars())
+                activity.window.insetsController
+                    ?.hide(android.view.WindowInsets.Type.systemBars())
             } else {
                 @Suppress("DEPRECATION")
                 activity.window.decorView.systemUiVisibility =
@@ -272,12 +293,18 @@ fun CameraSearchAndStreamScreen(
                             or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
             }
         } else {
+            // 🔁 KELUAR FULLSCREEN → PORTRAIT
+            setPortrait(activity)
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                activity.window.insetsController?.show(android.view.WindowInsets.Type.systemBars())
+                activity.window.insetsController
+                    ?.show(android.view.WindowInsets.Type.systemBars())
             } else {
                 @Suppress("DEPRECATION")
-                activity.window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+                activity.window.decorView.systemUiVisibility =
+                    View.SYSTEM_UI_FLAG_VISIBLE
             }
         }
     }
+
 }

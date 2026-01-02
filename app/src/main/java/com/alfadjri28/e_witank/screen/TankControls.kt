@@ -25,6 +25,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.zIndex
+
 
 /**
  * Tombol yang kirim onPress saat jari menyentuh,
@@ -72,35 +74,20 @@ fun FullscreenTankControls(
     val smallButtonBg = Color.Black.copy(alpha = 0.45f)
 
     Box(
-        modifier = modifier.fillMaxSize()
+        modifier = modifier
+            .fillMaxSize()
+            .safeDrawingPadding()
     ) {
-        // 🔹 Baris ATAS = channel A
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 32.dp, start = 24.dp, end = 24.dp)
-                .align(Alignment.TopCenter),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // ATAS KIRI = A / mundur
-            HoldableIconButton(
-                onPress = { controlViewModel.sendCommand(ip, "a", "mundur") },
-                onRelease = { controlViewModel.sendCommand(ip, "a", "stop") }
-            ) {
-                Icon(
-                    imageVector = Icons.Default.ArrowBack,
-                    contentDescription = "A Mundur",
-                    modifier = Modifier
-                        .size(buttonSize)
-                        .clip(CircleShape)
-                        .background(bg)
-                        .padding(16.dp),
-                    tint = Color.White
-                )
-            }
 
-            // ATAS KANAN = A / maju
+        // ================= LEFT SIDE (CHANNEL A) =================
+        Column(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // A MAJU
             HoldableIconButton(
                 onPress = { controlViewModel.sendCommand(ip, "a", "maju") },
                 onRelease = { controlViewModel.sendCommand(ip, "a", "stop") }
@@ -113,39 +100,39 @@ fun FullscreenTankControls(
                         .clip(CircleShape)
                         .background(bg)
                         .padding(16.dp)
-                        .rotate(180f), // style maju versi kamu
+                        .rotate(90f),
+                    tint = Color.White
+                )
+            }
+
+            // A MUNDUR
+            HoldableIconButton(
+                onPress = { controlViewModel.sendCommand(ip, "a", "mundur") },
+                onRelease = { controlViewModel.sendCommand(ip, "a", "stop") }
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ArrowBack,
+                    contentDescription = "A Mundur",
+                    modifier = Modifier
+                        .size(buttonSize)
+                        .clip(CircleShape)
+                        .background(bg)
+                        .padding(16.dp)
+                        .rotate(-90f),
                     tint = Color.White
                 )
             }
         }
 
-        // 🔹 Baris BAWAH = channel B
-        Row(
+        // ================= RIGHT SIDE (CHANNEL B) =================
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 32.dp, start = 24.dp, end = 24.dp)
-                .align(Alignment.BottomCenter),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
+                .align(Alignment.CenterEnd)
+                .padding(end = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // BAWAH KIRI = B / mundur
-            HoldableIconButton(
-                onPress = { controlViewModel.sendCommand(ip, "b", "mundur") },
-                onRelease = { controlViewModel.sendCommand(ip, "b", "stop") }
-            ) {
-                Icon(
-                    imageVector = Icons.Default.ArrowBack,
-                    contentDescription = "B Mundur",
-                    modifier = Modifier
-                        .size(buttonSize)
-                        .clip(CircleShape)
-                        .background(bg)
-                        .padding(16.dp),
-                    tint = Color.White
-                )
-            }
-
-            // BAWAH KANAN = B / maju
+            // B MAJU
             HoldableIconButton(
                 onPress = { controlViewModel.sendCommand(ip, "b", "maju") },
                 onRelease = { controlViewModel.sendCommand(ip, "b", "stop") }
@@ -158,48 +145,65 @@ fun FullscreenTankControls(
                         .clip(CircleShape)
                         .background(bg)
                         .padding(16.dp)
-                        .rotate(180f),
+                        .rotate(90f),
+                    tint = Color.White
+                )
+            }
+
+            // B MUNDUR
+            HoldableIconButton(
+                onPress = { controlViewModel.sendCommand(ip, "b", "mundur") },
+                onRelease = { controlViewModel.sendCommand(ip, "b", "stop") }
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ArrowBack,
+                    contentDescription = "B Mundur",
+                    modifier = Modifier
+                        .size(buttonSize)
+                        .clip(CircleShape)
+                        .background(bg)
+                        .padding(16.dp)
+                        .rotate(-90f),
                     tint = Color.White
                 )
             }
         }
 
-        // 🔸 Tombol MENU di pojok kanan atas — bentuk agak kotak, warna sama
+        // ================= MENU (TOP RIGHT) =================
         Box(
             modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 16.dp, end = 16.dp)
+                .align(Alignment.TopStart)
+                .padding(16.dp)
                 .size(40.dp)
+                .zIndex(10f)
                 .clip(RoundedCornerShape(12.dp))
                 .background(smallButtonBg)
                 .clickable { onMenuClick() },
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = Icons.Default.MoreVert,
-                contentDescription = "Menu",
-                tint = Color.White
-            )
+            Icon(Icons.Default.MoreVert, contentDescription = "Menu", tint = Color.White)
         }
 
-        // 🔸 Tombol KELUAR FULLSCREEN di pojok kanan bawah — sama style
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp)
-                .size(40.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(smallButtonBg)
-                .clickable { onExitFullscreen() },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Default.FullscreenExit,
-                contentDescription = "Keluar Fullscreen",
-                tint = Color.White
-            )
-        }
+        // ================= EXIT FULLSCREEN =================
+//        Box(
+//            modifier = Modifier
+//                .align(Alignment.TopEnd)
+//                .padding(top = 16.dp, end = 16.dp)
+//                .size(40.dp)
+//                .zIndex(10f)
+//                .clip(RoundedCornerShape(12.dp))
+//                .background(smallButtonBg)
+//                .clickable { onExitFullscreen() },
+//            contentAlignment = Alignment.Center
+//        ) {
+//            Icon(
+//                imageVector = Icons.Default.FullscreenExit,
+//                contentDescription = "Exit Fullscreen",
+//                tint = Color.White
+//            )
+//        }
     }
+
 }
 
 /**

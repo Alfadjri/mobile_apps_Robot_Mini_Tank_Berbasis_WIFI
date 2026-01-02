@@ -2,7 +2,6 @@ package com.alfadjri28.e_witank.screen
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Matrix
 import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -12,6 +11,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
@@ -27,8 +27,11 @@ fun WebStreamViewer(
     camIp: String,
     rotationDegrees: Float = 0f   // 0f potret normal, 90f / -90f untuk koreksi arah
 ) {
-    var frameBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var errorText by remember { mutableStateOf<String?>(null) }
+    var frameBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    val currentFrame by rememberUpdatedState(frameBitmap)
+
+
 
     // ⚠️ LaunchedEffect hanya pakai camIp, jangan pakai rotationDegrees
     LaunchedEffect(camIp) {
@@ -37,7 +40,6 @@ fun WebStreamViewer(
 
         withContext(Dispatchers.IO) {
             val streamUrl = "http://$camIp:81/camp"
-            Log.d("MJPEG", "Start MJPEG stream from $streamUrl")
 
             var conn: HttpURLConnection? = null
             try {
@@ -47,12 +49,12 @@ fun WebStreamViewer(
                     readTimeout = 5000
                     doInput = true
                     useCaches = false
+                    setRequestProperty("Connection", "Keep-Alive")
                 }
                 conn.connect()
 
                 val code = conn.responseCode
                 val ctype = conn.contentType
-                Log.d("MJPEG", "HTTP $code, contentType=$ctype")
 
                 if (code != HttpURLConnection.HTTP_OK) {
                     withContext(Dispatchers.Main) {
@@ -63,17 +65,19 @@ fun WebStreamViewer(
 
                 val input = BufferedInputStream(conn.inputStream, 16 * 1024)
                 var frameCount = 0
+                val targetFps = 15
+                val frameIntervalMs = 1000L / targetFps
+                var lastFrameTime = 0L
 
                 while (isActive) {
                     val boundaryLine = readMjpegLine(input) ?: break
                     if (!boundaryLine.startsWith("--")) continue
-                    Log.d("MJPEG", "Boundary: $boundaryLine")
+
 
                     var contentLength = -1
                     while (true) {
                         val headerLine = readMjpegLine(input) ?: return@withContext
                         if (headerLine.isEmpty()) break
-                        Log.d("MJPEG", "Header: $headerLine")
                         val lower = headerLine.lowercase()
                         if (lower.startsWith("content-length:")) {
                             contentLength = headerLine.substringAfter(":").trim().toIntOrNull() ?: -1
@@ -90,50 +94,29 @@ fun WebStreamViewer(
                     while (readTotal < contentLength) {
                         val r = input.read(imgBytes, readTotal, contentLength - readTotal)
                         if (r == -1) {
-                            Log.d("MJPEG", "EOF saat baca gambar")
                             return@withContext
                         }
                         readTotal += r
                     }
 
                     val opts = BitmapFactory.Options().apply {
-                        inSampleSize = 1
+                        inSampleSize = 2
                         inPreferredConfig = Bitmap.Config.RGB_565
                     }
 
                     val rawBmp = BitmapFactory.decodeByteArray(imgBytes, 0, imgBytes.size, opts)
 
                     // 🔥 ROTASI bitmap di sini, bukan di Compose
-                    val bmp: Bitmap? = if (rawBmp != null && rotationDegrees != 0f) {
-                        try {
-                            val m = Matrix().apply { postRotate(rotationDegrees) }
-                            val rotated = Bitmap.createBitmap(
-                                rawBmp,
-                                0, 0,
-                                rawBmp.width,
-                                rawBmp.height,
-                                m,
-                                true
-                            )
-                            rawBmp.recycle()
-                            rotated
-                        } catch (e: Exception) {
-                            Log.e("MJPEG", "Gagal rotate bitmap: ${e.message}")
-                            rawBmp
-                        }
-                    } else {
-                        rawBmp
-                    }
+                    val bmp = rawBmp ?: continue
 
-                    if (bmp != null) {
-                        frameCount++
-                        if (frameCount % 3 == 0) {
-                            withContext(Dispatchers.Main) {
-                                frameBitmap = bmp
-                            }
+                    val now = System.currentTimeMillis()
+                    if (now - lastFrameTime >= frameIntervalMs) {
+                        lastFrameTime = now
+                        withContext(Dispatchers.Main) {
+                            frameBitmap = bmp
                         }
                     } else {
-                        Log.w("MJPEG", "Gagal decode frame ke-$frameCount, size=${imgBytes.size}")
+                        bmp.recycle()
                     }
                 }
             } catch (e: Exception) {
@@ -154,18 +137,19 @@ fun WebStreamViewer(
             .background(Color.Black),
         contentAlignment = Alignment.Center
     ) {
-        val bmp = frameBitmap
+        val bmp = currentFrame
+
         if (bmp != null) {
             Image(
                 bitmap = bmp.asImageBitmap(),
                 contentDescription = "MJPEG Stream",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop   // tetap fullscreen, crop sedikit kalau perlu
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        rotationZ = rotationDegrees
+                    },
+                contentScale = ContentScale.FillBounds   // 🔥 INI KUNCI UTAMA
             )
-        }
-
-        errorText?.let { msg ->
-            Log.d("MJPEG", "ErrorText: $msg")
         }
     }
 }
