@@ -183,25 +183,6 @@ fun FullscreenTankControls(
         ) {
             Icon(Icons.Default.MoreVert, contentDescription = "Menu", tint = Color.White)
         }
-
-        // ================= EXIT FULLSCREEN =================
-//        Box(
-//            modifier = Modifier
-//                .align(Alignment.TopEnd)
-//                .padding(top = 16.dp, end = 16.dp)
-//                .size(40.dp)
-//                .zIndex(10f)
-//                .clip(RoundedCornerShape(12.dp))
-//                .background(smallButtonBg)
-//                .clickable { onExitFullscreen() },
-//            contentAlignment = Alignment.Center
-//        ) {
-//            Icon(
-//                imageVector = Icons.Default.FullscreenExit,
-//                contentDescription = "Exit Fullscreen",
-//                tint = Color.White
-//            )
-//        }
     }
 
 }

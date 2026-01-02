@@ -5,9 +5,11 @@ import android.os.Build
 import android.util.Log
 import android.view.View
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.FlashlightOn
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material3.*
@@ -23,6 +25,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.alfadjri28.e_witank.logic.CameraScanner
 import com.alfadjri28.e_witank.model.LocalStorageControllerRC
+import com.alfadjri28.e_witank.screen.lamp.LampIndicator
+import com.alfadjri28.e_witank.screen.lamp.LampViewModel
 import com.alfadjri28.e_witank.utils.setLandscape
 import com.alfadjri28.e_witank.utils.setPortrait
 import io.ktor.client.*
@@ -43,6 +47,8 @@ class CameraViewModel : ViewModel() {
     var isScanning by mutableStateOf(false)
     var progress by mutableStateOf(0f)
     var statusText by mutableStateOf("Menunggu pemindaian kamera...")
+
+
 
     fun startScan(
         ip: String,
@@ -125,11 +131,14 @@ fun CameraSearchAndStreamScreen(
     ip: String,
     camID: String,
     cameraViewModel: CameraViewModel = viewModel(),
-    controlViewModel: ControlViewModel = viewModel()
+    controlViewModel: ControlViewModel = viewModel(),
+    lampViewModel: LampViewModel = viewModel()
 ) {
     val context = LocalContext.current
     val storage = remember { LocalStorageControllerRC(context) }
     var isFullscreen by remember { mutableStateOf(false) }
+    var showLampMenu by remember { mutableStateOf(false) }
+
 
     val client = remember {
         HttpClient(Android) {
@@ -221,10 +230,14 @@ fun CameraSearchAndStreamScreen(
                                 camIp = camIp,
                                 rotationDegrees = 0f
                             )
+                            LampIndicator(
+                                isOn = lampViewModel.isLampOn.value
+                            )
+
 
                             // 🔴 TOMBOL EXIT FULLSCREEN (KANAN ATAS)
                             IconButton(
-                                onClick = { isFullscreen = false },
+                                onClick = { isFullscreen  = false },
                                 modifier = Modifier
                                     .align(Alignment.TopEnd)
                                     .padding(16.dp)
@@ -241,7 +254,9 @@ fun CameraSearchAndStreamScreen(
                             FullscreenTankControls(
                                 ip = ip,
                                 controlViewModel = controlViewModel,
-                                modifier = Modifier.fillMaxSize()
+                                modifier = Modifier.fillMaxSize(),
+                                onMenuClick = { showLampMenu = true }
+
                             )
                         }
 
@@ -257,7 +272,11 @@ fun CameraSearchAndStreamScreen(
                                     .fillMaxWidth()
                                     .weight(1f)
                             ) {
+
                                 WebStreamViewer(camIp = camIp)
+                                LampIndicator(
+                                    isOn = lampViewModel.isLampOn.value
+                                )
                             }
 
                             Spacer(modifier = Modifier.height(16.dp))
@@ -265,13 +284,59 @@ fun CameraSearchAndStreamScreen(
                             PortraitTankControls(
                                 ip = ip,
                                 controlViewModel = controlViewModel,
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth(),
+                                onMenuClick = { showLampMenu = true }
                             )
                         }
                     }
                 }
             }
         }
+        if (showLampMenu) {
+            ModalBottomSheet(
+                onDismissRequest = { showLampMenu = false }
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+
+                    Text(
+                        text = "Camera Menu",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Divider()
+
+                    cameraViewModel.foundCameraIp?.let { camIp ->
+                        ListItem(
+                            headlineContent = {
+                                Text(
+                                    if (lampViewModel.isLampOn.value)
+                                        "Matikan Lampu"
+                                    else
+                                        "Hidupkan Lampu"
+                                )
+                            },
+                            leadingContent = {
+                                Icon(
+                                    imageVector = Icons.Default.FlashlightOn,
+                                    contentDescription = null
+                                )
+                            },
+                            modifier = Modifier.clickable {
+                                lampViewModel.toggleLamp(camIp)
+                                showLampMenu = false
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
     }
 
     // FULLSCREEN: hide/show system bar
