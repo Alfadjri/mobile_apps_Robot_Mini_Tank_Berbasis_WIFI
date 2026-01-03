@@ -22,9 +22,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.NavController
 import com.alfadjri28.e_witank.logic.CameraScanner
 import com.alfadjri28.e_witank.model.LocalStorageControllerRC
+import com.alfadjri28.e_witank.screen.distance.DistanceIndicator
 import com.alfadjri28.e_witank.screen.lamp.LampIndicator
 import com.alfadjri28.e_witank.screen.lamp.LampViewModel
 import com.alfadjri28.e_witank.utils.setLandscape
@@ -39,6 +42,10 @@ import kotlinx.serialization.json.Json
 import io.ktor.client.request.*
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import com.alfadjri28.e_witank.screen.distance.DistanceViewModel
+import com.alfadjri28.e_witank.screen.distance.ProximityAlertIndicator
+import kotlinx.coroutines.flow.distinctUntilChanged
+
 
 // ====================== ViewModel Kamera ======================
 class CameraViewModel : ViewModel() {
@@ -84,6 +91,7 @@ class CameraViewModel : ViewModel() {
 
 // ====================== ViewModel Kontrol ======================
 class ControlViewModel : ViewModel() {
+    var isLocked by mutableStateOf(false)
     private val client = HttpClient(Android) {
         install(HttpTimeout) { requestTimeoutMillis = 1500 }
     }
@@ -99,6 +107,7 @@ class ControlViewModel : ViewModel() {
 
     fun sendCommand(controllerIp: String, channel: String, command: String) {
         val url = "http://$controllerIp/$channel/$command"
+        if (isLocked && command != "stop") return
         launchForKey(channel) {
             try {
                 Log.d("CONTROL", "Mengirim perintah: $url")
@@ -138,6 +147,8 @@ fun CameraSearchAndStreamScreen(
     val storage = remember { LocalStorageControllerRC(context) }
     var isFullscreen by remember { mutableStateOf(false) }
     var showLampMenu by remember { mutableStateOf(false) }
+    val distanceViewModel: DistanceViewModel = viewModel()
+
 
 
     val client = remember {
@@ -221,9 +232,38 @@ fun CameraSearchAndStreamScreen(
                 }
             } else {
                 cameraViewModel.foundCameraIp?.let { camIp ->
-                    LaunchedEffect(camIp) {
+                    DisposableEffect(camIp) {
                         lampViewModel.fetchLampStatus(camIp)
+                        distanceViewModel.startPolling(camIp)
+
+                        onDispose {
+                            distanceViewModel.stopPolling()
+                        }
                     }
+
+                    LaunchedEffect(distanceViewModel.safetyState.value) {
+                        when (distanceViewModel.safetyState.value) {
+
+                            DistanceViewModel.SafetyState.DANGER -> {
+                                if (!controlViewModel.isLocked) {
+                                    controlViewModel.isLocked = true
+                                    controlViewModel.sendBoth(ip, "stop")
+                                }
+                            }
+
+                            DistanceViewModel.SafetyState.WARNING -> {
+                                controlViewModel.isLocked = false
+                            }
+
+                            DistanceViewModel.SafetyState.SAFE -> {
+                                controlViewModel.isLocked = false
+                            }
+                        }
+                    }
+
+
+
+
                     if (isFullscreen) {
                         // ===================== MODE FULLSCREEN =====================
                         Box(modifier = Modifier.fillMaxSize()) {
@@ -233,6 +273,7 @@ fun CameraSearchAndStreamScreen(
                                 camIp = camIp,
                                 rotationDegrees = 0f
                             )
+                            // 🔦 LAMPU (bawah tengah)
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.Center)
@@ -241,6 +282,30 @@ fun CameraSearchAndStreamScreen(
                                 LampIndicator(
                                     isOn = lampViewModel.isLampOn.value
                                 )
+                            }
+
+                            // 📏 JARAK (atas tengah)
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .padding(top = 20.dp)
+                            ) {
+                                when (distanceViewModel.safetyState.value) {
+                                    DistanceViewModel.SafetyState.SAFE -> {
+                                        DistanceIndicator(distanceViewModel.distanceCm.value)
+                                    }
+
+                                    DistanceViewModel.SafetyState.WARNING,
+                                    DistanceViewModel.SafetyState.DANGER -> {
+                                        ProximityAlertIndicator(
+                                            distance = distanceViewModel.distanceCm.value,
+                                            state = distanceViewModel.safetyState.value
+                                        )
+                                    }
+                                }
+
+
+
                             }
 
 
@@ -284,9 +349,27 @@ fun CameraSearchAndStreamScreen(
                             ) {
 
                                 WebStreamViewer(camIp = camIp)
-                                LampIndicator(
-                                    isOn = lampViewModel.isLampOn.value
-                                )
+                                // 🔦 Lampu (misal pojok kiri atas)
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopStart)
+                                        .padding(12.dp)
+                                ) {
+                                    LampIndicator(
+                                        isOn = lampViewModel.isLampOn.value
+                                    )
+                                }
+
+                                // 📏 Jarak (pojok kanan atas / berlawanan)
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(12.dp)
+                                ) {
+                                    DistanceIndicator(
+                                        distanceViewModel.distanceCm.value
+                                    )
+                                }
                             }
 
                             Spacer(modifier = Modifier.height(16.dp))
