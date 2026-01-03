@@ -30,21 +30,5 @@ fun DistanceIndicator(distance: Int?) {
     }
 }
 
-@Composable
-fun ProximityAlertIndicator(distance: Int?) {
-    if (distance == null) return
-
-    val (color, alpha) = when {
-        distance <= 2 -> Color.Red to 0.9f
-        distance <= 18 -> Color.Yellow to 0.7f
-        else -> return
-    }
-
-    Box(
-        modifier = Modifier
-            .size(14.dp)
-            .background(color.copy(alpha = alpha), shape = CircleShape)
-    )
-}
 
 

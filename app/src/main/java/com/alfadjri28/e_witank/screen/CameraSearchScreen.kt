@@ -44,7 +44,9 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import com.alfadjri28.e_witank.screen.distance.DistanceViewModel
 import com.alfadjri28.e_witank.screen.distance.ProximityAlertIndicator
-import kotlinx.coroutines.flow.distinctUntilChanged
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+
 
 
 // ====================== ViewModel Kamera ======================
@@ -148,6 +150,8 @@ fun CameraSearchAndStreamScreen(
     var isFullscreen by remember { mutableStateOf(false) }
     var showLampMenu by remember { mutableStateOf(false) }
     val distanceViewModel: DistanceViewModel = viewModel()
+    val haptic = LocalHapticFeedback.current
+
 
 
 
@@ -240,18 +244,34 @@ fun CameraSearchAndStreamScreen(
                             distanceViewModel.stopPolling()
                         }
                     }
+                    var lastState by remember {
+                        mutableStateOf(DistanceViewModel.SafetyState.SAFE)
+                    }
 
                     LaunchedEffect(distanceViewModel.safetyState.value) {
-                        when (distanceViewModel.safetyState.value) {
+                        val state = distanceViewModel.safetyState.value
+
+                        when (state) {
 
                             DistanceViewModel.SafetyState.DANGER -> {
                                 if (!controlViewModel.isLocked) {
                                     controlViewModel.isLocked = true
                                     controlViewModel.sendBoth(ip, "stop")
+
+                                    // 🚫 GETAR KUAT (1x)
+                                    haptic.performHapticFeedback(
+                                        HapticFeedbackType.LongPress
+                                    )
                                 }
                             }
 
                             DistanceViewModel.SafetyState.WARNING -> {
+                                if (lastState != DistanceViewModel.SafetyState.WARNING) {
+                                    // ⚠️ GETAR KECIL (1x)
+                                    haptic.performHapticFeedback(
+                                        HapticFeedbackType.TextHandleMove
+                                    )
+                                }
                                 controlViewModel.isLocked = false
                             }
 
@@ -259,9 +279,9 @@ fun CameraSearchAndStreamScreen(
                                 controlViewModel.isLocked = false
                             }
                         }
+
+                        lastState = state
                     }
-
-
 
 
                     if (isFullscreen) {
@@ -366,9 +386,19 @@ fun CameraSearchAndStreamScreen(
                                         .align(Alignment.TopEnd)
                                         .padding(12.dp)
                                 ) {
-                                    DistanceIndicator(
-                                        distanceViewModel.distanceCm.value
-                                    )
+                                    when (distanceViewModel.safetyState.value) {
+                                        DistanceViewModel.SafetyState.SAFE -> {
+                                            DistanceIndicator(distanceViewModel.distanceCm.value)
+                                        }
+
+                                        DistanceViewModel.SafetyState.WARNING,
+                                        DistanceViewModel.SafetyState.DANGER -> {
+                                            ProximityAlertIndicator(
+                                                distance = distanceViewModel.distanceCm.value,
+                                                state = distanceViewModel.safetyState.value
+                                            )
+                                        }
+                                    }
                                 }
                             }
 

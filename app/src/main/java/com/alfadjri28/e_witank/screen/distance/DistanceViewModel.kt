@@ -20,9 +20,7 @@ import kotlinx.coroutines.withContext
 class DistanceViewModel : ViewModel() {
 
     enum class SafetyState {
-        SAFE,
-        WARNING,
-        DANGER
+        SAFE, WARNING, DANGER
     }
 
     private val client = HttpClient(Android) {
@@ -37,7 +35,7 @@ class DistanceViewModel : ViewModel() {
     fun startPolling(camIp: String) {
         if (pollingJob != null) return
 
-        pollingJob = viewModelScope.launch(Dispatchers.IO) {
+        pollingJob = viewModelScope.launch {
             while (isActive) {
                 try {
                     val response =
@@ -49,16 +47,16 @@ class DistanceViewModel : ViewModel() {
                         ?.get(1)
                         ?.toInt()
 
-                    withContext(Dispatchers.Main) {
-                        distanceCm.value = value
+                    distanceCm.value = value
 
-                        safetyState.value = when {
-                            value == null -> SafetyState.SAFE
-                            value <= 2 -> SafetyState.DANGER
-                            value <= 18 -> SafetyState.WARNING
-                            else -> SafetyState.SAFE
-                        }
+                    // 🔥 LOGIKA SAFETY STATE (INI KUNCI)
+                    safetyState.value = when {
+                        value == null -> SafetyState.SAFE
+                        value <= 2 -> SafetyState.DANGER
+                        value <= 18 -> SafetyState.WARNING
+                        else -> SafetyState.SAFE
                     }
+
                 } catch (_: Exception) {}
 
                 delay(300)
@@ -77,6 +75,7 @@ class DistanceViewModel : ViewModel() {
         super.onCleared()
     }
 }
+
 
 
 
