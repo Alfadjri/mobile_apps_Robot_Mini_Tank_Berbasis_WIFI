@@ -221,6 +221,9 @@ fun CameraSearchAndStreamScreen(
                 }
             } else {
                 cameraViewModel.foundCameraIp?.let { camIp ->
+                    LaunchedEffect(camIp) {
+                        lampViewModel.fetchLampStatus(camIp)
+                    }
                     if (isFullscreen) {
                         // ===================== MODE FULLSCREEN =====================
                         Box(modifier = Modifier.fillMaxSize()) {
@@ -230,9 +233,16 @@ fun CameraSearchAndStreamScreen(
                                 camIp = camIp,
                                 rotationDegrees = 0f
                             )
-                            LampIndicator(
-                                isOn = lampViewModel.isLampOn.value
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.Center)
+                                    .offset(y = 180.dp)   // posisi di antara MAJU & MUNDUR
+                            ) {
+                                LampIndicator(
+                                    isOn = lampViewModel.isLampOn.value
+                                )
+                            }
+
 
 
                             // 🔴 TOMBOL EXIT FULLSCREEN (KANAN ATAS)
