@@ -58,6 +58,7 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation(libs.androidx.material3)
     implementation(libs.androidx.ui)
+    implementation(libs.androidx.camera.core)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -67,11 +68,23 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 
 
-    // Ktor Dependencies (Sudah Benar)
+
     implementation("io.ktor:ktor-client-core:2.3.11")
     implementation("io.ktor:ktor-client-android:2.3.11")
     implementation("io.ktor:ktor-client-content-negotiation:2.3.11")
     implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.11")
     implementation("com.google.code.gson:gson:2.10.1")
+
+
+    // Dependensisi Tensenflow
+    // CameraX
+    implementation("androidx.camera:camera-camera2:1.3.1")
+    implementation("androidx.camera:camera-lifecycle:1.3.1")
+    implementation("androidx.camera:camera-view:1.3.1")
+    // ML
+
+    implementation("org.tensorflow:tensorflow-lite:2.14.0")
+    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
+    implementation("org.tensorflow:tensorflow-lite-gpu:2.14.0")
 
 }

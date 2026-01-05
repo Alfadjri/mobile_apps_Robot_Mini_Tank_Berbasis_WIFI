@@ -15,6 +15,7 @@
     import com.alfadjri28.e_witank.screens.HomeScreen
     import com.alfadjri28.e_witank.ui.theme.EWiTankTheme
     import com.alfadjri28.e_witank.screen.CameraSearchAndStreamScreen
+    import com.alfadjri28.e_witank.developer.CnnPlaygroundScreen
 
     class MainActivity : ComponentActivity() {
         override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,6 +55,10 @@
                                     camID = camID
                                 )
                             }
+                            composable("cnn_playground") {
+                                CnnPlaygroundScreen(navController)
+                            }
+
                         }
                     }
                 }

@@ -323,9 +323,6 @@ fun CameraSearchAndStreamScreen(
                                         )
                                     }
                                 }
-
-
-
                             }
 
 

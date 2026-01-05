@@ -33,10 +33,14 @@ import com.alfadjri28.e_witank.model.ConnectedDevice
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
+import androidx.compose.material.icons.filled.Build
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(navController: NavController) {
+    // developer Mode
+    var developerMode by remember { mutableStateOf(false) }
+
     val context = LocalContext.current
 
     val requiredPermissions = arrayOf(
@@ -66,6 +70,16 @@ fun HomeScreen(navController: NavController) {
         topBar = {
             TopAppBar(
                 title = { Text("E-WiTank Controller") },
+                actions = {
+                    IconButton(
+                        onClick = { navController.navigate("cnn_playground") }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Build,
+                            contentDescription = "Developer Mode"
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 )
