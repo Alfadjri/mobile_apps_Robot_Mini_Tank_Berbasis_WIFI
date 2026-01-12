@@ -6,6 +6,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.FullscreenExit
@@ -26,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.zIndex
+
 
 
 /**
@@ -77,6 +79,11 @@ fun FullscreenTankControls(
         modifier = modifier
             .fillMaxSize()
             .safeDrawingPadding()
+            .then(
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q)
+                    Modifier.systemGestureExclusion()
+                else Modifier
+            )
     ) {
 
         // ================= LEFT SIDE (CHANNEL A) =================
@@ -89,8 +96,8 @@ fun FullscreenTankControls(
         ) {
             // A MAJU
             HoldableIconButton(
-                onPress = { controlViewModel.sendCommand(ip, "a", "maju") },
-                onRelease = { controlViewModel.sendCommand(ip, "a", "stop") }
+                onPress = { controlViewModel.sendCommandSmooth(ip, "a", "maju") },
+                onRelease = { controlViewModel.sendCommandSmooth(ip, "a", "stop") }
             ) {
                 Icon(
                     imageVector = Icons.Default.ArrowBack,
@@ -107,8 +114,8 @@ fun FullscreenTankControls(
 
             // A MUNDUR
             HoldableIconButton(
-                onPress = { controlViewModel.sendCommand(ip, "a", "mundur") },
-                onRelease = { controlViewModel.sendCommand(ip, "a", "stop") }
+                onPress = { controlViewModel.sendCommandSmooth(ip, "a", "mundur") },
+                onRelease = { controlViewModel.sendCommandSmooth(ip, "a", "stop") }
             ) {
                 Icon(
                     imageVector = Icons.Default.ArrowBack,
@@ -134,8 +141,8 @@ fun FullscreenTankControls(
         ) {
             // B MAJU
             HoldableIconButton(
-                onPress = { controlViewModel.sendCommand(ip, "b", "maju") },
-                onRelease = { controlViewModel.sendCommand(ip, "b", "stop") }
+                onPress = { controlViewModel.sendCommandSmooth(ip, "b", "maju") },
+                onRelease = { controlViewModel.sendCommandSmooth(ip, "b", "stop") }
             ) {
                 Icon(
                     imageVector = Icons.Default.ArrowBack,
@@ -152,8 +159,8 @@ fun FullscreenTankControls(
 
             // B MUNDUR
             HoldableIconButton(
-                onPress = { controlViewModel.sendCommand(ip, "b", "mundur") },
-                onRelease = { controlViewModel.sendCommand(ip, "b", "stop") }
+                onPress = { controlViewModel.sendCommandSmooth(ip, "b", "mundur") },
+                onRelease = { controlViewModel.sendCommandSmooth(ip, "b", "stop") }
             ) {
                 Icon(
                     imageVector = Icons.Default.ArrowBack,
@@ -247,9 +254,10 @@ fun PortraitTankControls(
             ) {
                 // Kiri - Atas (A maju)
                 HoldableIconButton(
-                    onPress = { controlViewModel.sendCommand(ip, "a", "maju") },
-                    onRelease = { controlViewModel.sendCommand(ip, "a", "stop") }
-                ) {
+                    onPress = { controlViewModel.sendCommandSmooth(ip, "a", "maju") },
+                    onRelease = { controlViewModel.sendCommandSmooth(ip, "a", "stop") }
+                )
+                {
                     Icon(
                         imageVector = Icons.Default.ArrowBack,
                         contentDescription = "A Maju",
@@ -265,9 +273,10 @@ fun PortraitTankControls(
 
                 // Kiri - Bawah (A mundur)
                 HoldableIconButton(
-                    onPress = { controlViewModel.sendCommand(ip, "a", "mundur") },
-                    onRelease = { controlViewModel.sendCommand(ip, "a", "stop") }
-                ) {
+                    onPress = { controlViewModel.sendCommandSmooth(ip, "a", "mundur") },
+                    onRelease = { controlViewModel.sendCommandSmooth(ip, "a", "stop") }
+                )
+                {
                     Icon(
                         imageVector = Icons.Default.ArrowBack,
                         contentDescription = "A Mundur",
@@ -289,8 +298,8 @@ fun PortraitTankControls(
             ) {
                 // Kanan - Atas (B maju)
                 HoldableIconButton(
-                    onPress = { controlViewModel.sendCommand(ip, "b", "maju") },
-                    onRelease = { controlViewModel.sendCommand(ip, "b", "stop") }
+                    onPress = { controlViewModel.sendCommandSmooth(ip, "b", "maju") },
+                    onRelease = { controlViewModel.sendCommandSmooth(ip, "b", "stop") }
                 ) {
                     Icon(
                         imageVector = Icons.Default.ArrowBack,
@@ -307,8 +316,8 @@ fun PortraitTankControls(
 
                 // Kanan - Bawah (B mundur)
                 HoldableIconButton(
-                    onPress = { controlViewModel.sendCommand(ip, "b", "mundur") },
-                    onRelease = { controlViewModel.sendCommand(ip, "b", "stop") }
+                    onPress = { controlViewModel.sendCommandSmooth(ip, "b", "mundur") },
+                    onRelease = { controlViewModel.sendCommandSmooth(ip, "b", "stop") }
                 ) {
                     Icon(
                         imageVector = Icons.Default.ArrowBack,

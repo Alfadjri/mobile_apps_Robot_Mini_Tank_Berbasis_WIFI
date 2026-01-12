@@ -65,4 +65,15 @@ class LocalStorageControllerRC(context: Context) {
         saveControllerList(newList)
     }
 
+    fun saveCamIP(camID: String, camIP: String) {
+        sharedPreferences.edit()
+            .putString("cam_ip_$camID", camIP)
+            .apply()
+    }
+
+    fun getCamIPFast(camID: String): String? {
+        return sharedPreferences.getString("cam_ip_$camID", null)
+    }
+
+
 }

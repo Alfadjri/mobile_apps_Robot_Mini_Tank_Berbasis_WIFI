@@ -1,5 +1,6 @@
 package com.alfadjri28.e_witank.screen.lamp
 
+import android.R.attr.delay
 import android.util.Log
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
@@ -9,6 +10,7 @@ import io.ktor.client.engine.android.*
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.*
 import io.ktor.client.statement.bodyAsText
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class LampViewModel : ViewModel() {
@@ -39,25 +41,19 @@ class LampViewModel : ViewModel() {
 
     /** 🔘 Toggle lamp */
     fun toggleLamp(camIp: String) {
-        if (isLoading.value) return
-        isLoading.value = true
-
         viewModelScope.launch {
             try {
-                val endpoint =
-                    if (isLampOn.value) "lamp/off" else "lamp/on"
+                if (isLampOn.value) {
+                    client.get("http://$camIp/lamp/off")
+                } else {
+                    client.get("http://$camIp/lamp/on")
+                }
 
-                client.get("http://$camIp/$endpoint")
-
-                // 🔁 sync ulang setelah toggle
-                fetchLampStatus(camIp)
-
-            } catch (e: Exception) {
-                Log.e("LAMP", "Toggle gagal: ${e.message}")
-            } finally {
-                isLoading.value = false
-            }
+                delay(150) // ⏱️ kasih waktu ESP update
+                fetchLampStatus(camIp) // 🔥 WAJIB
+            } catch (_: Exception) {}
         }
     }
+
 }
 
