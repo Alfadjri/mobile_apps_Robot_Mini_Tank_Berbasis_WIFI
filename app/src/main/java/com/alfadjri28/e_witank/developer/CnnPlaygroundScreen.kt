@@ -25,7 +25,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import androidx.navigation.NavController
-import com.alfadjri28.e_witank.cnn.ObjectDetector
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,7 +33,6 @@ fun CnnPlaygroundScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val detector = remember { ObjectDetector(context) }
 
 
     var isFullscreen by remember { mutableStateOf(false) }
@@ -105,7 +103,6 @@ fun CnnPlaygroundScreen(
                 CameraPreview(
                     modifier = Modifier.fillMaxSize(),
                     lifecycleOwner = lifecycleOwner,
-                    detector = detector
                 )
             } else {
                 Text("Camera permission required")
@@ -120,7 +117,6 @@ fun CnnPlaygroundScreen(
 fun CameraPreview(
     modifier: Modifier = Modifier,
     lifecycleOwner: LifecycleOwner,
-    detector: ObjectDetector
 
 ) {
     val context = LocalContext.current
@@ -156,18 +152,6 @@ fun CameraPreview(
                 imageAnalysis.setAnalyzer(
                     ContextCompat.getMainExecutor(ctx)
                 ) { imageProxy ->
-                    val bitmap = imageProxy.toBitmap()
-                    if (bitmap != null) {
-                        val results = detector.detect(bitmap)
-
-                        // 🔥 LOG DULU (VALIDASI CNN JALAN)
-                        results.forEach {
-                            Log.d(
-                                "CNN",
-                                "Detected ${it.label} ${"%.2f".format(it.confidence)}"
-                            )
-                        }
-                    }
                     imageProxy.close()
                 }
 

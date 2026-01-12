@@ -55,9 +55,6 @@
                                     camID = camID
                                 )
                             }
-                            composable("cnn_playground") {
-                                CnnPlaygroundScreen(navController)
-                            }
 
                         }
                     }

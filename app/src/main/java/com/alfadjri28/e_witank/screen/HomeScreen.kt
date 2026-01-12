@@ -70,16 +70,6 @@ fun HomeScreen(navController: NavController) {
         topBar = {
             TopAppBar(
                 title = { Text("E-WiTank Controller") },
-                actions = {
-                    IconButton(
-                        onClick = { navController.navigate("cnn_playground") }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Build,
-                            contentDescription = "Developer Mode"
-                        )
-                    }
-                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 )
