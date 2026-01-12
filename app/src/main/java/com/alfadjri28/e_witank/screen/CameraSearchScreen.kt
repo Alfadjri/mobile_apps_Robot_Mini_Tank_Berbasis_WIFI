@@ -10,6 +10,7 @@
     import androidx.compose.material.icons.filled.FlashlightOn
     import androidx.compose.material.icons.filled.Fullscreen
     import androidx.compose.material.icons.filled.FullscreenExit
+    import androidx.compose.material.icons.filled.MoreVert
     import androidx.compose.material3.*
     import androidx.compose.runtime.*
     import androidx.compose.ui.Alignment
@@ -111,6 +112,15 @@
         private var lastSendTime = 0L
         private var lastCommand = ""
 
+        var isDevMode by mutableStateOf(false)
+            private set
+
+        var lastDevInfo by mutableStateOf("Belum ada input")
+
+        private var pressStartTime = 0L
+
+
+
         /**
          * 🔥 COMMAND HALUS
          * - max 1 command / 120ms
@@ -159,6 +169,21 @@
                 sendCommandSmooth(ip, "b", "stop")
             }
         }
+
+
+        fun toggleDevMode() {
+            isDevMode = !isDevMode
+        }
+
+        fun devPress(channel: String, action: String) {
+            pressStartTime = System.currentTimeMillis()
+        }
+
+        fun devRelease(channel: String, action: String) {
+            val duration = System.currentTimeMillis() - pressStartTime
+            lastDevInfo = "$channel - $action : ${duration} ms"
+        }
+
 
     }
 
@@ -392,12 +417,20 @@
 
                         Spacer(Modifier.height(16.dp))
 
-                        PortraitTankControls(
-                            ip = ip,
-                            controlViewModel = controlViewModel,
-                            modifier = Modifier.fillMaxWidth(),
-                            onMenuClick = { showLampMenu = true }
-                        )
+                        if (controlViewModel.isDevMode) {
+                            DevPortraitControls(
+                                ip = ip,
+                                controlViewModel = controlViewModel
+                            )
+                        } else {
+                            PortraitTankControls(
+                                ip = ip,
+                                controlViewModel = controlViewModel,
+                                modifier = Modifier.fillMaxWidth(),
+                                onMenuClick = { showLampMenu = true }
+                            )
+                        }
+
                     }
                 }
             }
@@ -428,6 +461,32 @@
                                 showLampMenu = false
                             }
                         )
+                        Divider()
+                        ListItem(
+                            headlineContent = {
+                                Text(
+                                    if (controlViewModel.isDevMode)
+                                        "Developer Mode (ON)"
+                                    else
+                                        "Developer Mode (OFF)"
+                                )
+                            },
+                            supportingContent = {
+                                if (controlViewModel.isDevMode) {
+                                    Text(
+                                        controlViewModel.lastDevInfo,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                            },
+                            leadingContent = {
+                                Icon(Icons.Default.MoreVert, null)
+                            },
+                            modifier = Modifier.clickable {
+                                controlViewModel.toggleDevMode()
+                            }
+                        )
+
                     }
                 }
             }
