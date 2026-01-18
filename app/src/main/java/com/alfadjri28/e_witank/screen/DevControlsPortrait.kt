@@ -1,125 +1,51 @@
 package com.alfadjri28.e_witank.screen
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-
-
-@Composable
-fun DevLogCenter(
-    controlViewModel: ControlViewModel
-) {
-    Column(
-        modifier = Modifier
-            .width(140.dp)
-            .fillMaxHeight(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(
-            text = "DEV LOG",
-            style = MaterialTheme.typography.labelMedium
-        )
-
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = controlViewModel.lastDevInfo,
-            style = MaterialTheme.typography.bodySmall
-        )
-    }
-}
-@Composable
-fun DevTankChannelControls(
-    ip: String,
-    channel: String,
-    controlViewModel: ControlViewModel
-) {
-    val buttonSize = 56.dp
-
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-
-        // MAJU
-        HoldableIconButton(
-            onPress = {
-                controlViewModel.devPress(channel.uppercase(), "MAJU")
-                controlViewModel.sendCommandSmooth(ip, channel, "maju")
-            },
-            onRelease = {
-                controlViewModel.devRelease(channel.uppercase(), "MAJU")
-                controlViewModel.sendCommandSmooth(ip, channel, "stop")
-            }
-        ) {
-            Icon(
-                imageVector = Icons.Default.ArrowBack,
-                contentDescription = "Maju",
-                modifier = Modifier
-                    .size(buttonSize)
-                    .rotate(90f)
-            )
-        }
-
-        // MUNDUR
-        HoldableIconButton(
-            onPress = {
-                controlViewModel.devPress(channel.uppercase(), "MUNDUR")
-                controlViewModel.sendCommandSmooth(ip, channel, "mundur")
-            },
-            onRelease = {
-                controlViewModel.devRelease(channel.uppercase(), "MUNDUR")
-                controlViewModel.sendCommandSmooth(ip, channel, "stop")
-            }
-        ) {
-            Icon(
-                imageVector = Icons.Default.ArrowBack,
-                contentDescription = "Mundur",
-                modifier = Modifier
-                    .size(buttonSize)
-                    .rotate(-90f)
-            )
-        }
-    }
-}
 
 @Composable
 fun DevPortraitControls(
-    ip: String,
-    controlViewModel: ControlViewModel
+    onDatasetClick: () -> Unit,
+    onRthClick: () -> Unit
 ) {
-    if (!controlViewModel.isDevMode) return
+    // ⛔ hanya tampil kalau DEV MODE aktif
+    // pengecekan isDevMode dilakukan di caller
 
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+            .height(120.dp)
+            .background(Color.Black.copy(alpha = 0.65f))
+            .padding(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
 
-        // KIRI (CHANNEL A)
-        DevTankChannelControls(
-            ip = ip,
-            channel = "a",
-            controlViewModel = controlViewModel
-        )
+        Button(
+            onClick = onDatasetClick,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("BOUNDING BOX")
+        }
 
-        // TENGAH (LOG)
-        DevLogCenter(controlViewModel)
+        Spacer(modifier = Modifier.height(12.dp))
 
-        // KANAN (CHANNEL B)
-        DevTankChannelControls(
-            ip = ip,
-            channel = "b",
-            controlViewModel = controlViewModel
-        )
+        Button(
+            onClick = onRthClick,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.error
+            )
+        ) {
+            Text("RETURN TO HOME")
+        }
     }
 }
-
 

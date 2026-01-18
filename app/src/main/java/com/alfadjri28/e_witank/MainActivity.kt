@@ -8,14 +8,17 @@
     import androidx.compose.material3.Surface
     import androidx.compose.ui.Modifier
     import androidx.compose.foundation.layout.fillMaxSize
+    import androidx.lifecycle.viewmodel.compose.viewModel
     import androidx.navigation.compose.NavHost
     import androidx.navigation.compose.composable
     import androidx.navigation.compose.rememberNavController
+    import com.alfadjri28.e_witank.dataset.bbox.DatasetScreen
     import com.alfadjri28.e_witank.screen.SplashScreen
     import com.alfadjri28.e_witank.screens.HomeScreen
     import com.alfadjri28.e_witank.ui.theme.EWiTankTheme
     import com.alfadjri28.e_witank.screen.CameraSearchAndStreamScreen
     import com.alfadjri28.e_witank.developer.CnnPlaygroundScreen
+    import com.alfadjri28.e_witank.screen.developer.RthExecutionScreen
 
     class MainActivity : ComponentActivity() {
         override fun onCreate(savedInstanceState: Bundle?) {
@@ -53,6 +56,27 @@
                                 val camID = backStackEntry.arguments?.getString("camID") ?: ""
                                 CameraSearchAndStreamScreen(navController = navController, ip = ip,
                                     camID = camID
+                                )
+                            }
+
+                            composable(
+                                route = "rth/{ip}"
+                            ) { backStackEntry ->
+
+                                val ip = backStackEntry.arguments?.getString("ip")!!
+
+                                RthExecutionScreen(
+                                    navController = navController,
+                                    ip = ip,
+                                    controlViewModel = viewModel()
+                                )
+                            }
+
+
+//                            hapus nnti
+                            composable("dataset/{camID}") { backStack ->
+                                DatasetScreen(
+                                    camIp = backStack.arguments?.getString("camID")!!
                                 )
                             }
 

@@ -1,338 +1,261 @@
-    package com.alfadjri28.e_witank.screen
+package com.alfadjri28.e_witank.screen
 
-    import androidx.compose.foundation.background
-    import androidx.compose.foundation.clickable
-    import androidx.compose.foundation.gestures.detectTapGestures
-    import androidx.compose.foundation.layout.*
-    import androidx.compose.foundation.shape.CircleShape
-    import androidx.compose.foundation.shape.RoundedCornerShape
-    import androidx.compose.foundation.systemGestureExclusion
-    import androidx.compose.material.icons.Icons
-    import androidx.compose.material.icons.filled.ArrowBack
-    import androidx.compose.material.icons.filled.FullscreenExit
-    import androidx.compose.material.icons.filled.MoreVert
-    import androidx.compose.material3.Icon
-    import androidx.compose.material3.IconButton
-    import androidx.compose.material3.MaterialTheme
-    import androidx.compose.material3.Text
-    import androidx.compose.runtime.Composable
-    import androidx.compose.ui.Alignment
-    import androidx.compose.ui.Modifier
-    import androidx.compose.ui.draw.clip
-    import androidx.compose.ui.draw.rotate
-    import androidx.compose.ui.graphics.Color
-    import androidx.compose.ui.input.pointer.pointerInput
-    import androidx.compose.ui.text.font.FontWeight
-    import androidx.compose.ui.unit.dp
-    import androidx.compose.material.icons.filled.Menu
-    import androidx.compose.ui.graphics.vector.rememberVectorPainter
-    import androidx.compose.ui.zIndex
-
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.systemGestureExclusion
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
+import com.alfadjri28.e_witank.model.ControlViewModel
 
 
-    /**
-     * Tombol yang kirim onPress saat jari menyentuh,
-     * dan onRelease saat jari diangkat / gesture selesai.
-     */
-    @Composable
-    fun HoldableIconButton(
-        modifier: Modifier = Modifier,
-        onPress: () -> Unit,
-        onRelease: () -> Unit,
-        content: @Composable () -> Unit
-    ) {
-        Box(
-            modifier = modifier.pointerInput(Unit) {
-                detectTapGestures(
-                    onPress = {
-                        onPress()
-                        try {
-                            awaitRelease()
-                        } finally {
-                            onRelease()
-                        }
+/* =========================================================
+   1. COMMAND ENUM (SATU-SATUNYA TEMPAT STRING COMMAND)
+   ========================================================= */
+
+
+enum class TankCommand(
+    val channel: String,
+    val action: String
+) {
+    A_MAJU("a", "maju"),
+    A_MUNDUR("a", "mundur"),
+    B_MAJU("b", "maju"),
+    B_MUNDUR("b", "mundur")
+}
+
+/* =========================================================
+   2. CORE EXECUTOR (LOGIC + RTH TERPUSAT)
+   ========================================================= */
+
+private fun executeTankCommand(
+    vm: ControlViewModel,
+    ip: String,
+    command: TankCommand,
+    pressed: Boolean
+) {
+    if (pressed) {
+        vm.rthRecorder.onPress(command.channel, command.action)
+        vm.sendCommandSmooth(ip, command.channel, command.action)
+    } else {
+        vm.rthRecorder.onRelease(command.channel, command.action)
+        vm.sendCommandSmooth(ip, command.channel, "stop")
+    }
+}
+
+/* =========================================================
+   3. HOLDABLE BUTTON (LOW LEVEL)
+   ========================================================= */
+
+@Composable
+fun HoldableIconButton(
+    onPress: () -> Unit,
+    onRelease: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier = Modifier.pointerInput(Unit) {
+            detectTapGestures(
+                onPress = {
+                    onPress()
+                    try {
+                        awaitRelease()
+                    } finally {
+                        onRelease()
                     }
-                )
-            }
-        ) {
-            content()
+                }
+            )
         }
-    }
-
-    /**
-     * Kontrol fullscreen (2 baris: A di atas, B di bawah)
-     * + tombol menu (atas kanan) & exit fullscreen (bawah kanan)
-     */
-    @Composable
-    fun FullscreenTankControls(
-        ip: String,
-        controlViewModel: ControlViewModel,
-        modifier: Modifier = Modifier,
-        onExitFullscreen: () -> Unit = {},
-        onMenuClick: () -> Unit = {}
     ) {
-        val buttonSize = 72.dp
-        val bg = Color.Black.copy(alpha = 0.35f)
-        val smallButtonBg = Color.Black.copy(alpha = 0.45f)
-
-        Box(
-            modifier = modifier
-                .fillMaxSize()
-                .safeDrawingPadding()
-                .then(
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q)
-                        Modifier.systemGestureExclusion()
-                    else Modifier
-                )
-        ) {
-
-            // ================= LEFT SIDE (CHANNEL A) =================
-            Column(
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .padding(start = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // A MAJU
-                HoldableIconButton(
-                    onPress = { controlViewModel.sendCommandSmooth(ip, "a", "maju") },
-                    onRelease = { controlViewModel.sendCommandSmooth(ip, "a", "stop") }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ArrowBack,
-                        contentDescription = "A Maju",
-                        modifier = Modifier
-                            .size(buttonSize)
-                            .clip(CircleShape)
-                            .background(bg)
-                            .padding(16.dp)
-                            .rotate(90f),
-                        tint = Color.White
-                    )
-                }
-
-                // A MUNDUR
-                HoldableIconButton(
-                    onPress = { controlViewModel.sendCommandSmooth(ip, "a", "mundur") },
-                    onRelease = { controlViewModel.sendCommandSmooth(ip, "a", "stop") }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ArrowBack,
-                        contentDescription = "A Mundur",
-                        modifier = Modifier
-                            .size(buttonSize)
-                            .clip(CircleShape)
-                            .background(bg)
-                            .padding(16.dp)
-                            .rotate(-90f),
-                        tint = Color.White
-                    )
-                }
-            }
-
-            // ================= RIGHT SIDE (CHANNEL B) =================
-            Column(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // B MAJU
-                HoldableIconButton(
-                    onPress = { controlViewModel.sendCommandSmooth(ip, "b", "maju") },
-                    onRelease = { controlViewModel.sendCommandSmooth(ip, "b", "stop") }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ArrowBack,
-                        contentDescription = "B Maju",
-                        modifier = Modifier
-                            .size(buttonSize)
-                            .clip(CircleShape)
-                            .background(bg)
-                            .padding(16.dp)
-                            .rotate(90f),
-                        tint = Color.White
-                    )
-                }
-
-                // B MUNDUR
-                HoldableIconButton(
-                    onPress = { controlViewModel.sendCommandSmooth(ip, "b", "mundur") },
-                    onRelease = { controlViewModel.sendCommandSmooth(ip, "b", "stop") }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ArrowBack,
-                        contentDescription = "B Mundur",
-                        modifier = Modifier
-                            .size(buttonSize)
-                            .clip(CircleShape)
-                            .background(bg)
-                            .padding(16.dp)
-                            .rotate(-90f),
-                        tint = Color.White
-                    )
-                }
-            }
-
-            // ================= MENU (TOP RIGHT) =================
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(16.dp)
-                    .size(40.dp)
-                    .zIndex(10f)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(smallButtonBg)
-                    .clickable { onMenuClick() },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.MoreVert, contentDescription = "Menu", tint = Color.White)
-            }
-        }
-
+        content()
     }
+}
 
-    /**
-     * Kontrol non-fullscreen (potret) di bawah video.
-     * 2 tombol kiri = channel "a"
-     * 2 tombol kanan = channel "b"
-     */
-    @Composable
-    fun PortraitTankControls(
-        ip: String,
-        controlViewModel: ControlViewModel,
-        modifier: Modifier = Modifier,
-        onMenuClick: () -> Unit = {}
+/* =========================================================
+   4. TANK CONTROL BUTTON (YANG DIPAKAI VIEW)
+   ========================================================= */
+
+@Composable
+fun TankControlButton(
+    ip: String,
+    vm: ControlViewModel,
+    command: TankCommand,
+    content: @Composable () -> Unit
+) {
+    HoldableIconButton(
+        onPress = { executeTankCommand(vm, ip, command, true) },
+        onRelease = { executeTankCommand(vm, ip, command, false) }
     ) {
-        val buttonSize = 64.dp
-        val bg = Color.Black.copy(alpha = 0.25f)
+        content()
+    }
+}
+
+/* =========================================================
+   5. ICON HELPER (BIAR VIEW RAPI)
+   ========================================================= */
+
+@Composable
+private fun ArrowIcon(
+    size: Dp,
+    bg: Color,
+    rotation: Float
+) {
+    Icon(
+        imageVector = Icons.Default.ArrowBack,
+        contentDescription = null,
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(bg)
+            .padding(16.dp)
+            .rotate(rotation),
+        tint = Color.White
+    )
+}
+
+/* =========================================================
+   6. FULLSCREEN CONTROLS (BERSIH)
+   ========================================================= */
+
+@Composable
+fun FullscreenTankControls(
+    ip: String,
+    controlViewModel: ControlViewModel,
+    modifier: Modifier = Modifier,
+    onMenuClick: () -> Unit = {}
+) {
+    val buttonSize = 72.dp
+    val bg = Color.Black.copy(alpha = 0.35f)
+    val smallBg = Color.Black.copy(alpha = 0.45f)
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .safeDrawingPadding()
+            .then(
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q)
+                    Modifier.systemGestureExclusion()
+                else Modifier
+            )
+    ) {
 
         Column(
-            modifier = modifier,
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = Modifier.align(Alignment.CenterStart).padding(start = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            // Judul
-            Text(
-                text = "Kontrol Tank",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
+            TankControlButton(ip, controlViewModel, TankCommand.A_MAJU) {
+                ArrowIcon(buttonSize, bg, 90f)
+            }
+            TankControlButton(ip, controlViewModel, TankCommand.A_MUNDUR) {
+                ArrowIcon(buttonSize, bg, -90f)
+            }
+        }
 
-            Spacer(modifier = Modifier.height(8.dp))
+        Column(
+            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            TankControlButton(ip, controlViewModel, TankCommand.B_MAJU) {
+                ArrowIcon(buttonSize, bg, 90f)
+            }
+            TankControlButton(ip, controlViewModel, TankCommand.B_MUNDUR) {
+                ArrowIcon(buttonSize, bg, -90f)
+            }
+        }
 
-            // 🔥 Tombol menu (burger) — center di bawah tulisan
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(bg)
-                    .clickable { onMenuClick() },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    painter = rememberVectorPainter(Icons.Default.Menu),
-                    contentDescription = "Menu",
-                    tint = Color.White
-                )
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(16.dp)
+                .size(40.dp)
+                .zIndex(10f)
+                .clip(RoundedCornerShape(12.dp))
+                .background(smallBg)
+                .clickable { onMenuClick() },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.MoreVert, contentDescription = "Menu", tint = Color.White)
+        }
+    }
+}
+
+/* =========================================================
+   7. PORTRAIT CONTROLS (BERSIH)
+   ========================================================= */
+
+@Composable
+fun PortraitTankControls(
+    ip: String,
+    controlViewModel: ControlViewModel,
+    modifier: Modifier = Modifier,
+    onMenuClick: () -> Unit = {}
+) {
+    val buttonSize = 64.dp
+    val bg = Color.Black.copy(alpha = 0.25f)
+
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+
+        Text(
+            text = "Kontrol Tank",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(bg)
+                .clickable { onMenuClick() },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Color.White)
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                TankControlButton(ip, controlViewModel, TankCommand.A_MAJU) {
+                    ArrowIcon(buttonSize, bg, 90f)
+                }
+                TankControlButton(ip, controlViewModel, TankCommand.A_MUNDUR) {
+                    ArrowIcon(buttonSize, bg, -90f)
+                }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 🔥 Tombol tank — diratakan sejajar posisi tombol menu
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp),   // sekitar 0.5cm dari pinggir layar
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                // Kolom kiri = channel "a"
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    // Kiri - Atas (A maju)
-                    HoldableIconButton(
-                        onPress = { controlViewModel.sendCommandSmooth(ip, "a", "maju") },
-                        onRelease = { controlViewModel.sendCommandSmooth(ip, "a", "stop") }
-                    )
-                    {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "A Maju",
-                            modifier = Modifier
-                                .size(buttonSize)
-                                .clip(CircleShape)
-                                .background(bg)
-                                .padding(16.dp)
-                                .rotate(90f),
-                            tint = Color.White
-                        )
-                    }
-
-                    // Kiri - Bawah (A mundur)
-                    HoldableIconButton(
-                        onPress = { controlViewModel.sendCommandSmooth(ip, "a", "mundur") },
-                        onRelease = { controlViewModel.sendCommandSmooth(ip, "a", "stop") }
-                    )
-                    {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "A Mundur",
-                            modifier = Modifier
-                                .size(buttonSize)
-                                .clip(CircleShape)
-                                .background(bg)
-                                .padding(16.dp)
-                                .rotate(-90f),
-                            tint = Color.White
-                        )
-                    }
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                TankControlButton(ip, controlViewModel, TankCommand.B_MAJU) {
+                    ArrowIcon(buttonSize, bg, 90f)
                 }
-
-                // Kolom kanan = channel "b"
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    // Kanan - Atas (B maju)
-                    HoldableIconButton(
-                        onPress = { controlViewModel.sendCommandSmooth(ip, "b", "maju") },
-                        onRelease = { controlViewModel.sendCommandSmooth(ip, "b", "stop") }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "B Maju",
-                            modifier = Modifier
-                                .size(buttonSize)
-                                .clip(CircleShape)
-                                .background(bg)
-                                .padding(16.dp)
-                                .rotate(90f),
-                            tint = Color.White
-                        )
-                    }
-
-                    // Kanan - Bawah (B mundur)
-                    HoldableIconButton(
-                        onPress = { controlViewModel.sendCommandSmooth(ip, "b", "mundur") },
-                        onRelease = { controlViewModel.sendCommandSmooth(ip, "b", "stop") }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "B Mundur",
-                            modifier = Modifier
-                                .size(buttonSize)
-                                .clip(CircleShape)
-                                .background(bg)
-                                .padding(16.dp)
-                                .rotate(-90f),
-                            tint = Color.White
-                        )
-                    }
+                TankControlButton(ip, controlViewModel, TankCommand.B_MUNDUR) {
+                    ArrowIcon(buttonSize, bg, -90f)
                 }
             }
         }
     }
-
+}
