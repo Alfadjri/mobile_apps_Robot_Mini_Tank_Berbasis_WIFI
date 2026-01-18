@@ -9,6 +9,7 @@ class RthExecutor(
 
     private var rthJob: Job? = null
 
+
     fun execute(ip: String, motions: List<RthMotionCommand>) {
         if (motions.isEmpty()) return
 
@@ -16,36 +17,53 @@ class RthExecutor(
 
         rthJob = CoroutineScope(Dispatchers.Main).launch {
 
-//            // ===============================
-//            // 1️⃣ PUTAR TERUS (ORIENTASI RESET)
-//            // ===============================
-//            rotateContinuously(ip)
-
-            // ===============================
-            // 2️⃣ MAIN ULANG MOTION (TERBALIK)
-            // ===============================
-            for (motion in motions) {
-                executeSameMotion(ip, motion)
+            val hasBackward = motions.any {
+                it.motion == RobotMotion.MUNDUR ||
+                        it.motion == RobotMotion.MUNDUR_BELOK_KIRI ||
+                        it.motion == RobotMotion.MUNDUR_BELOK_KANAN
             }
-//            // ===============================
-//            // 1️⃣ PUTAR TERUS (ORIENTASI AWAL)
-//            // ===============================
-//            rotateContinuously(ip)
 
-            // ===============================
-            // 3️⃣ STOP
-            // ===============================
+            // 🔥 CASE KAMU: TIDAK ADA MUNDUR
+            if (!hasBackward) {
+                rotate180(ip)
+            }
+
+            for (cmd in motions) {
+                val playMotion =
+                    if (!hasBackward) {
+                        cmd.copy(motion = RthMapper.invert(cmd.motion))
+                    } else {
+                        cmd
+                    }
+                executeSameMotion(ip, playMotion)
+            }
+
+            if (!hasBackward) {
+                rotate180(ip)
+            }
+
             controlViewModel.stopBoth(ip)
         }
     }
 
-    private suspend fun rotateContinuously(ip: String) {
-        // PUTAR KANAN DI TEMPAT
+    private suspend fun rotate180(ip: String) {
+        // PUTAR DI TEMPAT
         controlViewModel.sendCommandSmooth(ip, "a", "maju")
         controlViewModel.sendCommandSmooth(ip, "b", "mundur")
+        delay(600) // kalibrasi 180°
 
-        delay(300) // estimasi 180
+        controlViewModel.stopBoth(ip)
+        delay(80)
+
+        // 🔥 MICRO-FORWARD (ANTI OFFSET)
+        controlViewModel.sendCommandSmooth(ip, "a", "maju")
+        controlViewModel.sendCommandSmooth(ip, "b", "maju")
+        delay(10)
+
+        controlViewModel.stopBoth(ip)
+        delay(120)
     }
+
 
     private suspend fun executeSameMotion(
         ip: String,
@@ -111,4 +129,59 @@ class RthExecutor(
     fun stop() {
         rthJob?.cancel()
     }
+
+
+    suspend fun executeSingleStep(
+        ip: String,
+        motionCmd: RthMotionCommand
+    ) {
+        when (motionCmd.motion) {
+
+            RobotMotion.MAJU -> {
+                controlViewModel.sendCommandSmooth(ip, "a", "maju")
+                controlViewModel.sendCommandSmooth(ip, "b", "maju")
+            }
+
+            RobotMotion.MUNDUR -> {
+                controlViewModel.sendCommandSmooth(ip, "a", "mundur")
+                controlViewModel.sendCommandSmooth(ip, "b", "mundur")
+            }
+
+            RobotMotion.MAJU_BELOK_KANAN -> {
+                controlViewModel.sendCommandSmooth(ip, "a", "maju")
+                controlViewModel.sendCommandSmooth(ip, "b", "stop")
+            }
+
+            RobotMotion.MAJU_BELOK_KIRI -> {
+                controlViewModel.sendCommandSmooth(ip, "a", "stop")
+                controlViewModel.sendCommandSmooth(ip, "b", "maju")
+            }
+
+            RobotMotion.MUNDUR_BELOK_KIRI -> {
+                controlViewModel.sendCommandSmooth(ip, "a", "mundur")
+                controlViewModel.sendCommandSmooth(ip, "b", "stop")
+            }
+
+            RobotMotion.MUNDUR_BELOK_KANAN -> {
+                controlViewModel.sendCommandSmooth(ip, "a", "stop")
+                controlViewModel.sendCommandSmooth(ip, "b", "mundur")
+            }
+
+            RobotMotion.PUTAR_KANAN -> {
+                controlViewModel.sendCommandSmooth(ip, "a", "maju")
+                controlViewModel.sendCommandSmooth(ip, "b", "mundur")
+            }
+
+            RobotMotion.PUTAR_KIRI -> {
+                controlViewModel.sendCommandSmooth(ip, "a", "mundur")
+                controlViewModel.sendCommandSmooth(ip, "b", "maju")
+            }
+
+            RobotMotion.DIAM -> return
+        }
+
+        delay(motionCmd.durationMs)
+        controlViewModel.stopBoth(ip)
+    }
+
 }

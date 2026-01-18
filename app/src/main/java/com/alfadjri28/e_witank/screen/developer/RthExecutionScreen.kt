@@ -6,8 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -16,6 +15,7 @@ import androidx.navigation.NavController
 import com.alfadjri28.e_witank.RTH.RthExecutor
 import com.alfadjri28.e_witank.model.ControlViewModel
 import com.alfadjri28.e_witank.screen.PortraitTankControls
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -26,6 +26,14 @@ fun RthExecutionScreen(
 ) {
     val rthExecutor = remember { RthExecutor(controlViewModel) }
     val rthRecorder = controlViewModel.rthRecorder
+
+    // 🔥 DATA STEP
+    val recordedMotions = rthRecorder.getRecordedMotions()
+    val scope = rememberCoroutineScope()
+
+
+
+    var previewIndex by remember { mutableStateOf(0) }
 
     Scaffold(
         topBar = {
@@ -104,6 +112,93 @@ fun RthExecutionScreen(
 
             Spacer(Modifier.height(8.dp))
 
+            /* ================= RTH STEP PREVIEW ================= */
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp)
+                    .background(Color.DarkGray.copy(alpha = 0.6f))
+            ) {
+
+                Text(
+                    "RTH STEP PREVIEW",
+                    color = Color.Yellow,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(Modifier.height(6.dp))
+
+                if (recordedMotions.isEmpty()) {
+
+                    Text(
+                        "Belum ada data record",
+                        color = Color.Gray
+                    )
+
+                } else {
+
+                    val current = recordedMotions.getOrNull(previewIndex)
+                    val next = recordedMotions.getOrNull(previewIndex + 1)
+
+                    Text(
+                        "STEP ${previewIndex + 1} / ${recordedMotions.size}",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Spacer(Modifier.height(4.dp))
+
+                    Text(
+                        "▶ CURRENT : ${current?.motion} (${current?.durationMs} ms)",
+                        color = Color.Cyan
+                    )
+
+                    Text(
+                        "→ NEXT     : ${
+                            next?.let { "${it.motion} (${it.durationMs} ms)" }
+                                ?: "END"
+                        }",
+                        color = Color.LightGray
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+
+                        Button(
+                            onClick = {
+                                if (previewIndex > 0) previewIndex--
+                            },
+                            enabled = previewIndex > 0
+                        ) {
+                            Text("PREV")
+                        }
+
+                        Button(
+                            onClick = {
+                                val step = recordedMotions.getOrNull(previewIndex) ?: return@Button
+
+                                scope.launch {
+                                    rthExecutor.executeSingleStep(ip, step)
+                                }
+
+                                if (previewIndex < recordedMotions.size - 1) {
+                                    previewIndex++
+                                }
+                            },
+                            enabled = previewIndex < recordedMotions.size
+                        ) {
+                            Text("NEXT ▶ RUN")
+                        }
+
+                    }
+                }
+            }
+
             /* ================= DEBUG LOG ================= */
 
             Column(
@@ -134,6 +229,8 @@ fun RthExecutionScreen(
                     }
             }
 
+            /* ================= EXECUTE ================= */
+
             Button(
                 onClick = {
                     controlViewModel.stopRecordAndReturnHome(ip)
@@ -150,7 +247,6 @@ fun RthExecutionScreen(
                     fontWeight = FontWeight.Bold
                 )
             }
-
 
             /* ================= TANK CONTROLS ================= */
 
