@@ -15,6 +15,7 @@ import androidx.navigation.NavController
 import com.alfadjri28.e_witank.RTH.RthExecutor
 import com.alfadjri28.e_witank.model.ControlViewModel
 import com.alfadjri28.e_witank.screen.PortraitTankControls
+import com.alfadjri28.e_witank.screen.distance.DistanceViewModel
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -22,28 +23,45 @@ import kotlinx.coroutines.launch
 fun RthExecutionScreen(
     navController: NavController,
     ip: String,
-    controlViewModel: ControlViewModel
+    camID: String,
+    controlViewModel: ControlViewModel,
+    distanceViewModel: DistanceViewModel
 ) {
-    val rthExecutor = remember { RthExecutor(controlViewModel) }
-    val rthRecorder = controlViewModel.rthRecorder
 
-    // 🔥 DATA STEP
+    /* ================= SENSOR LIFECYCLE ================= */
+
+    LaunchedEffect(ip) {
+        distanceViewModel.startPolling(camID)
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            distanceViewModel.stopPolling()
+        }
+    }
+
+    /* ================= CORE ================= */
+
+    val rthExecutor = remember {
+        RthExecutor(
+            controlViewModel = controlViewModel,
+            distanceViewModel = distanceViewModel
+        )
+    }
+
+    val rthRecorder = controlViewModel.rthRecorder
+    val safetyState by distanceViewModel.safetyState
+    val distance = distanceViewModel.distanceCm.value
+
     val recordedMotions = rthRecorder.getRecordedMotions()
     val scope = rememberCoroutineScope()
-
-
 
     var previewIndex by remember { mutableStateOf(0) }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Text(
-                        "RETURN TO HOME (DEV)",
-                        fontWeight = FontWeight.Bold
-                    )
-                },
+                title = { Text("RETURN TO HOME (DEV)", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = {
                         rthExecutor.stop()
@@ -66,13 +84,34 @@ fun RthExecutionScreen(
             /* ================= STATUS ================= */
 
             Text(
-                text = "RTH EXECUTION MODE",
+                "RTH EXECUTION MODE",
                 color = Color.Green,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(12.dp)
             )
 
-            /* ================= RECORD BUTTON ================= */
+            Text(
+                text = "SENSOR: " +
+                        (distance?.let { "ACTIVE ($it cm)" } ?: "INACTIVE"),
+                color = if (distance != null) Color.Cyan else Color.Gray,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 12.dp)
+            )
+
+            Text(
+                text = "SAFETY: $safetyState",
+                color = when (safetyState) {
+                    DistanceViewModel.SafetyState.SAFE -> Color.Green
+                    DistanceViewModel.SafetyState.WARNING -> Color.Yellow
+                    DistanceViewModel.SafetyState.DANGER -> Color.Red
+                },
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 12.dp)
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            /* ================= RECORD ================= */
 
             Row(
                 modifier = Modifier
@@ -82,37 +121,27 @@ fun RthExecutionScreen(
             ) {
 
                 Text(
-                    text = if (rthRecorder.isRecording())
-                        "● RECORDING"
-                    else
-                        "○ NOT RECORDING",
-                    color = if (rthRecorder.isRecording())
-                        Color.Red
-                    else
-                        Color.Gray,
+                    if (rthRecorder.isRecording()) "● RECORDING" else "○ NOT RECORDING",
+                    color = if (rthRecorder.isRecording()) Color.Red else Color.Gray,
                     fontWeight = FontWeight.Bold
                 )
 
                 Text(
-                    text = if (rthRecorder.isRecording())
-                        "STOP RECORD"
-                    else
-                        "START RECORD",
+                    if (rthRecorder.isRecording()) "STOP RECORD" else "START RECORD",
                     color = Color.Cyan,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.clickable {
-                        if (rthRecorder.isRecording()) {
+                        if (rthRecorder.isRecording())
                             rthRecorder.stopRecord()
-                        } else {
+                        else
                             rthRecorder.startRecord()
-                        }
                     }
                 )
             }
 
             Spacer(Modifier.height(8.dp))
 
-            /* ================= RTH STEP PREVIEW ================= */
+            /* ================= STEP PREVIEW ================= */
 
             Column(
                 modifier = Modifier
@@ -121,21 +150,12 @@ fun RthExecutionScreen(
                     .background(Color.DarkGray.copy(alpha = 0.6f))
             ) {
 
-                Text(
-                    "RTH STEP PREVIEW",
-                    color = Color.Yellow,
-                    fontWeight = FontWeight.Bold
-                )
+                Text("RTH STEP PREVIEW", color = Color.Yellow, fontWeight = FontWeight.Bold)
 
                 Spacer(Modifier.height(6.dp))
 
                 if (recordedMotions.isEmpty()) {
-
-                    Text(
-                        "Belum ada data record",
-                        color = Color.Gray
-                    )
-
+                    Text("Belum ada data record", color = Color.Gray)
                 } else {
 
                     val current = recordedMotions.getOrNull(previewIndex)
@@ -147,18 +167,13 @@ fun RthExecutionScreen(
                         fontWeight = FontWeight.Bold
                     )
 
-                    Spacer(Modifier.height(4.dp))
-
                     Text(
                         "▶ CURRENT : ${current?.motion} (${current?.durationMs} ms)",
                         color = Color.Cyan
                     )
 
                     Text(
-                        "→ NEXT     : ${
-                            next?.let { "${it.motion} (${it.durationMs} ms)" }
-                                ?: "END"
-                        }",
+                        "→ NEXT : ${next?.let { "${it.motion} (${it.durationMs} ms)" } ?: "END"}",
                         color = Color.LightGray
                     )
 
@@ -170,36 +185,34 @@ fun RthExecutionScreen(
                     ) {
 
                         Button(
-                            onClick = {
-                                if (previewIndex > 0) previewIndex--
-                            },
+                            onClick = { if (previewIndex > 0) previewIndex-- },
                             enabled = previewIndex > 0
-                        ) {
-                            Text("PREV")
-                        }
+                        ) { Text("PREV") }
 
                         Button(
+                            enabled = safetyState != DistanceViewModel.SafetyState.DANGER &&
+                                    previewIndex < recordedMotions.size,
                             onClick = {
-                                val step = recordedMotions.getOrNull(previewIndex) ?: return@Button
-
+                                val step = recordedMotions[previewIndex]
                                 scope.launch {
                                     rthExecutor.executeSingleStep(ip, step)
                                 }
-
-                                if (previewIndex < recordedMotions.size - 1) {
+                                if (previewIndex < recordedMotions.size - 1)
                                     previewIndex++
-                                }
-                            },
-                            enabled = previewIndex < recordedMotions.size
+                            }
                         ) {
-                            Text("NEXT ▶ RUN")
+                            Text(
+                                if (safetyState == DistanceViewModel.SafetyState.DANGER)
+                                    "BLOCKED ⚠"
+                                else
+                                    "NEXT ▶ RUN"
+                            )
                         }
-
                     }
                 }
             }
 
-            /* ================= DEBUG LOG ================= */
+            /* ================= DEBUG ================= */
 
             Column(
                 modifier = Modifier
@@ -209,46 +222,31 @@ fun RthExecutionScreen(
                     .background(Color.Black.copy(alpha = 0.7f))
             ) {
 
-                Text(
-                    "DEBUG LOG",
-                    color = Color.Green,
-                    fontWeight = FontWeight.Bold
-                )
+                Text("DEBUG LOG", color = Color.Green, fontWeight = FontWeight.Bold)
 
                 Spacer(Modifier.height(6.dp))
 
-                rthRecorder
-                    .getDebugLog()
-                    .takeLast(12)
-                    .forEach {
-                        Text(
-                            it,
-                            color = Color.White,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
+                rthRecorder.getDebugLog().takeLast(12).forEach {
+                    Text(it, color = Color.White, style = MaterialTheme.typography.bodySmall)
+                }
             }
 
             /* ================= EXECUTE ================= */
 
             Button(
                 onClick = {
-                    controlViewModel.stopRecordAndReturnHome(ip)
+                    val motions = controlViewModel.stopRecord()
+                    if (motions.isNotEmpty()) {
+                        rthExecutor.execute(ip, motions)
+                    }
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.Red
-                )
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
             ) {
-                Text(
-                    "STOP RECORD & RETURN HOME",
-                    fontWeight = FontWeight.Bold
-                )
+                Text("STOP RECORD & RETURN HOME", fontWeight = FontWeight.Bold)
             }
 
-            /* ================= TANK CONTROLS ================= */
+            /* ================= MANUAL CONTROL ================= */
 
             PortraitTankControls(
                 ip = ip,

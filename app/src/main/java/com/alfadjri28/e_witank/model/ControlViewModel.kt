@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.alfadjri28.e_witank.RTH.RthExecutor
+import com.alfadjri28.e_witank.RTH.RthMotionCommand
 import com.alfadjri28.e_witank.RTH.RthRecorder
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.android.Android
@@ -28,7 +29,6 @@ class ControlViewModel : ViewModel() {
 
 
     val rthRecorder = RthRecorder()
-    private val rthExecutor = RthExecutor(this)
 
 
 
@@ -113,15 +113,9 @@ class ControlViewModel : ViewModel() {
         lastDevInfo = "$channel - $action : ${duration} ms"
     }
 
-    fun stopRecordAndReturnHome(ip: String) {
+    fun stopRecord(): List<RthMotionCommand> {
         rthRecorder.stopRecord()
-
-        val motions = rthRecorder.getRecordedMotions()
-        if (motions.isEmpty()) return
-
-        RthExecutor(this).execute(ip, motions)
+        return rthRecorder.getRecordedMotions()
     }
-
-
 }
 

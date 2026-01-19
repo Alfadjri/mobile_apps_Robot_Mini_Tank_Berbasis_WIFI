@@ -1,7 +1,5 @@
 package com.alfadjri28.e_witank.screen.distance
 
-
-import android.util.Log
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -10,12 +8,10 @@ import io.ktor.client.engine.android.*
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.*
 import io.ktor.client.statement.bodyAsText
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class DistanceViewModel : ViewModel() {
 
@@ -30,34 +26,64 @@ class DistanceViewModel : ViewModel() {
     val distanceCm = mutableStateOf<Int?>(null)
     val safetyState = mutableStateOf(SafetyState.SAFE)
 
+    // 🔥 SIMPAN DATA TERAKHIR YANG VALID
+    private var lastValidDistance: Int? = null
+
     private var pollingJob: Job? = null
+
+    fun isDanger(): Boolean =
+        safetyState.value == SafetyState.DANGER
+
+    fun isWarning(): Boolean =
+        safetyState.value == SafetyState.WARNING
 
     fun startPolling(camIp: String) {
         if (pollingJob != null) return
 
         pollingJob = viewModelScope.launch {
             while (isActive) {
+
+                var currentDistance: Int? = null
+
                 try {
                     val response =
                         client.get("http://$camIp/distance").bodyAsText()
 
-                    val value = Regex("\"distance\":(\\d+)")
+                    currentDistance = Regex("\"distance\":(\\d+)")
                         .find(response)
                         ?.groupValues
                         ?.get(1)
                         ?.toInt()
 
-                    distanceCm.value = value
+                } catch (_: Exception) {
+                    // timeout / parsing error → currentDistance tetap null
+                }
 
-                    // 🔥 LOGIKA SAFETY STATE (INI KUNCI)
-                    safetyState.value = when {
-                        value == null -> SafetyState.SAFE
-                        value <= 2 -> SafetyState.DANGER
-                        value <= 18 -> SafetyState.WARNING
-                        else -> SafetyState.SAFE
+                when {
+                    // ✅ DATA NORMAL
+                    currentDistance != null -> {
+                        lastValidDistance = currentDistance
+                        distanceCm.value = currentDistance
+
+                        safetyState.value = when {
+                            currentDistance <= 18 -> SafetyState.DANGER
+                            currentDistance <= 25 -> SafetyState.WARNING
+                            else -> SafetyState.SAFE
+                        }
                     }
 
-                } catch (_: Exception) {}
+                    // 🚨 SENSOR HILANG SETELAH PERNAH AKTIF
+                    lastValidDistance != null -> {
+                        distanceCm.value = null
+                        safetyState.value = SafetyState.DANGER
+                    }
+
+                    // 💤 SENSOR BELUM READY
+                    else -> {
+                        distanceCm.value = null
+                        safetyState.value = SafetyState.SAFE
+                    }
+                }
 
                 delay(300)
             }
@@ -75,7 +101,3 @@ class DistanceViewModel : ViewModel() {
         super.onCleared()
     }
 }
-
-
-
-

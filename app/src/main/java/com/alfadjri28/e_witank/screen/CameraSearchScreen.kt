@@ -61,9 +61,15 @@ fun CameraSearchAndStreamScreen(
     var showLampMenu by remember { mutableStateOf(false) }
     val distanceViewModel: DistanceViewModel = viewModel()
     val haptic = LocalHapticFeedback.current
-    val rthExecutor = remember { RthExecutor(controlViewModel) }
+    val rthExecutor = remember {
+            RthExecutor(
+                controlViewModel = controlViewModel,
+                distanceViewModel = distanceViewModel
+            )
+        }
 
-    val client = remember {
+
+        val client = remember {
         HttpClient(Android) {
             install(HttpTimeout) {
                 requestTimeoutMillis = 5000
@@ -280,7 +286,7 @@ fun CameraSearchAndStreamScreen(
                                 navController.navigate("dataset/$camIp")
                             },
                             onRthClick = {
-                                navController.navigate("rth/$ip")
+                                navController.navigate("rth/$ip/$camIp")
                             }
 
                         )

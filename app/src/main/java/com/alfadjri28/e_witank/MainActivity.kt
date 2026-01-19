@@ -18,12 +18,16 @@
     import com.alfadjri28.e_witank.ui.theme.EWiTankTheme
     import com.alfadjri28.e_witank.screen.CameraSearchAndStreamScreen
     import com.alfadjri28.e_witank.developer.CnnPlaygroundScreen
+    import com.alfadjri28.e_witank.model.ControlViewModel
     import com.alfadjri28.e_witank.screen.developer.RthExecutionScreen
+    import com.alfadjri28.e_witank.screen.distance.DistanceViewModel
 
     class MainActivity : ComponentActivity() {
         override fun onCreate(savedInstanceState: Bundle?) {
+
             super.onCreate(savedInstanceState)
             enableEdgeToEdge()
+
             setContent {
                 EWiTankTheme {
                     Surface(
@@ -31,7 +35,8 @@
                         color = MaterialTheme.colorScheme.background
                     ) {
                         val navController = rememberNavController()
-
+                        val controlViewModel: ControlViewModel = viewModel()
+                        val distanceViewModel: DistanceViewModel = viewModel()
                         NavHost(navController = navController, startDestination = "splash_guide") {
                             composable("splash_guide") {
                                 SplashScreen(
@@ -60,15 +65,17 @@
                             }
 
                             composable(
-                                route = "rth/{ip}"
+                                route = "rth/{ip}/{camID}"
                             ) { backStackEntry ->
 
-                                val ip = backStackEntry.arguments?.getString("ip")!!
-
+                                val ip = backStackEntry.arguments?.getString("ip") ?: ""
+                                val camID = backStackEntry.arguments?.getString("camID") ?: ""
                                 RthExecutionScreen(
                                     navController = navController,
                                     ip = ip,
-                                    controlViewModel = viewModel()
+                                    camID = camID,
+                                    controlViewModel = controlViewModel,
+                                    distanceViewModel = distanceViewModel
                                 )
                             }
 
