@@ -85,7 +85,7 @@ class DistanceViewModel : ViewModel() {
                     }
                 }
 
-                delay(300)
+                delay(80)
             }
         }
     }

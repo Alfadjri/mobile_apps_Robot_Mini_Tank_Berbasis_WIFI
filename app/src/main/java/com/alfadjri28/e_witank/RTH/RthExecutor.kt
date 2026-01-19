@@ -10,37 +10,40 @@ class RthExecutor(
 ) {
 
     private var rthJob: Job? = null
-    private val SAFETY_STEP_MS = 50L
+    private val SAFETY_STEP_MS = 20L
     private val WARNING_CM = 10
 
-    // 🔥 waktu maju yang terpotong karena danger
-    private var timeDebtMs: Long = 0L
+    // 🔥 TOTAL JARAK MAJU YANG TIDAK JADI DITEMPUH
+    private var totalForwardDebtMs: Long = 0L
 
     fun execute(ip: String, motions: List<RthMotionCommand>) {
         if (motions.isEmpty()) return
 
         rthJob?.cancel()
-        timeDebtMs = 0L
+        totalForwardDebtMs = 0L
 
         rthJob = CoroutineScope(Dispatchers.Default).launch {
 
             val hasBackward = motions.any { it.motion.isBackward() }
 
+            val rthPath =
+                if (!hasBackward) buildRthPath(motions)
+                else motions
+
             if (!hasBackward) rotate180(ip)
 
-            for (cmd in motions) {
-
-                // ⏱️ kompensasi durasi
-                val adjustedDuration =
-                    (cmd.durationMs - timeDebtMs).coerceAtLeast(0L)
-
-                timeDebtMs = 0L
-
+            // 🔁 JALANKAN SEMUA STEP TANPA DIPOTONG
+            for (cmd in rthPath) {
                 runMotionWithRecovery(
                     ip = ip,
-                    motion = if (!hasBackward) RthMapper.invert(cmd.motion) else cmd.motion,
-                    durationMs = adjustedDuration
+                    motion = cmd.motion,
+                    durationMs = cmd.durationMs
                 )
+            }
+
+            // 🔥 KOMPENSASI POSISI DI AKHIR
+            if (totalForwardDebtMs > 0) {
+                compensateFinalPosition(ip)
             }
 
             if (!hasBackward) rotate180(ip)
@@ -49,13 +52,20 @@ class RthExecutor(
         }
     }
 
-    suspend fun executeSingleStep(ip: String, cmd: RthMotionCommand) {
-        runMotionWithRecovery(ip, cmd.motion, cmd.durationMs)
-    }
-
     fun stop() {
         rthJob?.cancel()
         controlViewModel.stopBoth("")
+    }
+
+    suspend fun executeSingleStep(
+        ip: String,
+        cmd: RthMotionCommand
+    ) {
+        runMotionWithRecovery(
+            ip = ip,
+            motion = cmd.motion,
+            durationMs = cmd.durationMs
+        )
     }
 
     /* ================= CORE ================= */
@@ -65,15 +75,17 @@ class RthExecutor(
         motion: RobotMotion,
         durationMs: Long
     ) {
+        // 🔥 HARD RESET STATE MOTOR
+        controlViewModel.stopBoth(ip)
+        delay(80) // settling time WAJIB
+
         sendMotion(ip, motion)
 
         var elapsed = 0L
-
         while (elapsed < durationMs) {
 
             if (motion.isForward() && distanceViewModel.isDanger()) {
-                // 🔥 simpan sisa waktu maju
-                timeDebtMs = durationMs - elapsed
+                totalForwardDebtMs = durationMs - elapsed
                 recoverFromDanger(ip)
                 return
             }
@@ -92,24 +104,39 @@ class RthExecutor(
         controlViewModel.stopBoth(ip)
         delay(60)
 
-        var backElapsed = 0L
+        // 🔙 MUNDUR SAMPAI MASUK WARNING ZONE
+        while (
+            distanceViewModel.distanceCm.value?.let { it <= WARNING_CM } == true
+        ) {
+            controlViewModel.sendCommandSmooth(ip, "a", "mundur")
+            controlViewModel.sendCommandSmooth(ip, "b", "mundur")
+            delay(60)
+        }
+
+        controlViewModel.stopBoth(ip)
+        delay(120)
+    }
+
+    /* ================= FINAL COMPENSATION ================= */
+
+    private suspend fun compensateFinalPosition(ip: String) {
+        var compensated = 0L
 
         while (
-            distanceViewModel.distanceCm.value?.let { it <= WARNING_CM } == true &&
-            backElapsed < timeDebtMs
+            compensated < totalForwardDebtMs &&
+            distanceViewModel.distanceCm.value?.let { it > WARNING_CM } == true
         ) {
             controlViewModel.sendCommandSmooth(ip, "a", "mundur")
             controlViewModel.sendCommandSmooth(ip, "b", "mundur")
 
-            delay(60)
-            backElapsed += 60
+            delay(50)
+            compensated += 50
         }
-
-        // 🔥 hitung sisa debt
-        timeDebtMs = (timeDebtMs - backElapsed).coerceAtLeast(0L)
 
         controlViewModel.stopBoth(ip)
         delay(120)
+
+        totalForwardDebtMs = 0L
     }
 
     /* ================= ROTATE ================= */
@@ -165,3 +192,10 @@ private fun RobotMotion.isForward(): Boolean =
     this == RobotMotion.MAJU ||
             this == RobotMotion.MAJU_BELOK_KANAN ||
             this == RobotMotion.MAJU_BELOK_KIRI
+
+private fun buildRthPath(
+    motions: List<RthMotionCommand>
+): List<RthMotionCommand> =
+    motions
+        .asReversed()
+        .map { it.copy(motion = RthMapper.invert(it.motion)) }
