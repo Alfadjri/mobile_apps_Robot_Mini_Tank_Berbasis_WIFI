@@ -92,8 +92,11 @@ fun CameraSearchAndStreamScreen(
     }
 
     val camIp = cameraViewModel.getActiveCamIp()
+    var cameraError by remember { mutableStateOf(false) }
 
-    Scaffold(
+
+
+        Scaffold(
         topBar = {
             if (!isFullscreen) {
                 TopAppBar(
@@ -153,17 +156,15 @@ fun CameraSearchAndStreamScreen(
                 onDispose { distanceViewModel.stopPolling() }
             }
 
+
             var lastState by remember {
                 mutableStateOf(DistanceViewModel.SafetyState.SAFE)
             }
 
             LaunchedEffect(distanceViewModel.safetyState.value) {
-                val state = distanceViewModel.safetyState.value
-                controlViewModel.blockForward =
-                    distanceViewModel.safetyState.value == DistanceViewModel.SafetyState.DANGER
 
+                when (distanceViewModel.safetyState.value) {
 
-                when (state) {
                     DistanceViewModel.SafetyState.DANGER -> {
                         if (!controlViewModel.isLocked) {
                             controlViewModel.isLocked = true
@@ -172,27 +173,44 @@ fun CameraSearchAndStreamScreen(
                         }
                     }
 
-                    DistanceViewModel.SafetyState.WARNING -> {
-                        if (lastState != DistanceViewModel.SafetyState.WARNING) {
-                            haptic.performHapticFeedback(
-                                HapticFeedbackType.TextHandleMove
-                            )
-                        }
-                        controlViewModel.isLocked = false
-                    }
-
-                    DistanceViewModel.SafetyState.SAFE -> {
+                    else -> {
                         controlViewModel.isLocked = false
                     }
                 }
-                lastState = state
             }
+
+
 
             if (isFullscreen) {
                 // ===== FULLSCREEN =====
                 Box(modifier = Modifier.fillMaxSize()) {
+                    if (cameraError) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp)
+                                .align(Alignment.TopCenter)
+                        ) {
+                            Card(
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.errorContainer
+                                )
+                            ) {
+                                Text(
+                                    text = "⚠ Kamera terputus",
+                                    modifier = Modifier.padding(12.dp),
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
+                        }
+                    }
 
-                    WebStreamViewer(camIp = camIp)
+                    WebStreamViewer(
+                        camIp = camIp,
+                        onStreamError = { error ->
+                            cameraError = error
+                        }
+                    )
 
                     Box(
                         modifier = Modifier
@@ -249,8 +267,33 @@ fun CameraSearchAndStreamScreen(
                             .fillMaxWidth()
                             .weight(1f)
                     ) {
+                        if (cameraError) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp)
+                                    .align(Alignment.TopCenter)
+                            ) {
+                                Card(
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.errorContainer
+                                    )
+                                ) {
+                                    Text(
+                                        text = "⚠ Kamera terputus",
+                                        modifier = Modifier.padding(12.dp),
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                }
+                            }
+                        }
+                        WebStreamViewer(
+                            camIp = camIp,
+                            onStreamError = { error ->
+                                cameraError = error
+                            }
+                        )
 
-                        WebStreamViewer(camIp = camIp)
 
                         Box(
                             modifier = Modifier

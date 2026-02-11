@@ -26,6 +26,7 @@ import kotlin.coroutines.coroutineContext
 @Composable
 fun WebStreamViewer(
     camIp: String,
+    onStreamError: (Boolean) -> Unit = {},
     overlay: @Composable BoxScope.() -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -44,19 +45,32 @@ fun WebStreamViewer(
 
 
     DisposableEffect(camIp) {
+
         val job = CoroutineScope(Dispatchers.IO).launch {
-            startMjpegStreamStable(
-                camIp = camIp,
-                isActive = { isActive }
-            ) { bmp ->
-                withContext(Dispatchers.Main) {
-                    imageView.setImageBitmap(bmp)
+
+            while (isActive) {
+                try {
+                    startMjpegStreamStable(
+                        camIp = camIp,
+                        isActive = { isActive }
+                    ) { bmp ->
+                        withContext(Dispatchers.Main) {
+                            onStreamError(false) // stream normal
+                            imageView.setImageBitmap(bmp)
+                        }
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        onStreamError(true) // stream error
+                    }
+                    delay(2000) // tunggu sebelum reconnect
                 }
             }
         }
 
         onDispose { job.cancel() }
     }
+
 
     Box(modifier = Modifier.fillMaxSize()) {
 

@@ -23,7 +23,8 @@ class ControlViewModel : ViewModel() {
     var isLocked by mutableStateOf(false)
 
     // 🔒 LOGIC SENSOR
-    var blockForward by mutableStateOf(false)
+    var blockForwardOnly by mutableStateOf(false)   // < 10cm
+    var blockForwardHard by mutableStateOf(false) // < 5cm
     var slowMode by mutableStateOf(false)
     private var autoStopJob: Job? = null
 
@@ -60,8 +61,20 @@ class ControlViewModel : ViewModel() {
         channel: String,
         command: String
     ) {
+        // 🔴 GLOBAL LOCK (emergency total)
         if (isLocked && command != "stop") return
-        if (blockForward && command == "maju") return
+
+        // 🚨 HARD LOCK (<5cm)
+        // semua command yang ada "maju" di dalamnya diblok
+        if (blockForwardHard) {
+            if (command.contains("maju")) return
+        }
+
+        // ⚠️ SOFT LOCK (<10cm)
+        // hanya maju murni yang diblok
+        if (blockForwardOnly) {
+            if (command == "maju") return
+        }
 
         val now = System.currentTimeMillis()
         val key = "$channel:$command"
@@ -78,6 +91,7 @@ class ControlViewModel : ViewModel() {
             } catch (_: Exception) {}
         }
     }
+
 
     fun stopBoth(ip: String) {
         sendCommandSmooth(ip, "a", "stop")
